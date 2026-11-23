@@ -258,7 +258,10 @@ const SHELL = [...document.body.childNodes]
   .filter(n => n.nodeType === 8 || n.nodeType === 1 && n.matches('#stage,.hud,#live,#sheet,#drop,#toast'))
   .map(n => n.nodeType === 8 ? LT + '!--' + n.data + '-->' : n.outerHTML).join('\n');
 
-const GUIDE = `# Waypoint
+const GUIDE = `---
+waypoint-start: { across: 0.224, down: 0.341, zoom: 2, theme: grid, shape: 1.9 }
+---
+# Waypoint
 
 ## Fly
 - Scroll to fly in and out, toward the cursor
@@ -332,7 +335,8 @@ const GUIDE = `# Waypoint
 - waypoint-mode: dark, light or auto
 - waypoint-lean: off keeps the grid floor flat
 - waypoint-start: overview, or the view Save in outline wrote
-  - The three numbers are where the view is centred, across and down the chart, and how far it is zoomed in
+  - Across and down say where the view is centred, zoom how far in it is
+  - It applies in the theme and window shape it was set in; elsewhere the outline opens on the whole chart
 - waypoint-palettes holds the colours of each palette by name
   - Each one has a dark line and a light line
   - Each line gives ground, ink, accent and highlight as hex colours
@@ -581,8 +585,13 @@ function readFront(src) {           // → { set, palettes }: what the outline's
   if (word(w.palette)) set.palette = word(w.palette);
   if (/^(?:dark|light|auto)$/.test(word(w.mode))) set.mode = word(w.mode);
   if (/^(?:on|off|true|false|yes|no)$/.test(word(w.lean))) set.lean = /^(?:on|true|yes)$/.test(word(w.lean));
-  const sv = word(w.start), sm = sv.match(/^view\s+(-?[\d.]+)\s+(-?[\d.]+)\s+([\d.]+)$/);
-  if (sm && +sm[3] > 0) set.start = { fx: +sm[1], fy: +sm[2], z: +sm[3] }; else if (/^(?:overview|whole|all)$/.test(sv)) set.start = null;
+  const so = w.start && typeof w.start === 'object' ? w.start : null, sv = word(w.start), sm = sv.match(/^view\s+(-?[\d.]+)\s+(-?[\d.]+)\s+([\d.]+)$/), num = v => parseFloat(v);
+  if (so && num(so.zoom) > 0 && isFinite(num(so.across)) && isFinite(num(so.down))) {
+    set.start = { fx: num(so.across), fy: num(so.down), z: num(so.zoom) };
+    if (THEMES[word(so.theme)]) set.start.th = word(so.theme);
+    if (num(so.shape) > 0) set.start.a = num(so.shape);
+  } else if (sm && +sm[3] > 0) set.start = { fx: +sm[1], fy: +sm[2], z: +sm[3] };
+  else if (/^(?:overview|whole|all)$/.test(sv)) set.start = null;
   if (w.palettes && typeof w.palettes === 'object') for (const id in w.palettes) { const p = norm(w.palettes[id], id); if (p) palettes[id] = p; }
   return { set, palettes };
 }
@@ -592,7 +601,7 @@ function writeFront(src, set, palettes, start) {   // the same outline with its 
   const one = s => `{ ground: ${q(s.ground)}, ink: ${q(s.ink)}, accent: ${q(s.accent)}, highlight: ${q(s.highlight)}${s.surface ? `, surface: ${q(s.surface)}` : ''} }`;
   const mine = [`waypoint-theme: ${set.theme}`]; if (set.palette) mine.push(`waypoint-palette: ${yk(set.palette)}`);
   mine.push(`waypoint-mode: ${set.mode}`); if (set.lean === false) mine.push('waypoint-lean: off');
-  if (start) mine.push(`waypoint-start: view ${start.fx} ${start.fy} ${start.z}`);
+  if (start) mine.push(`waypoint-start: { across: ${start.fx}, down: ${start.fy}, zoom: ${start.z}${start.th ? `, theme: ${start.th}` : ''}${start.a ? `, shape: ${start.a}` : ''} }`);
   const ids = Object.keys(palettes);
   if (ids.length) { mine.push('waypoint-palettes:'); for (const id of ids) mine.push(`  ${yk(id)}:`, `    name: ${JSON.stringify(palettes[id].name)}`, `    dark: ${one(palettes[id].dark)}`, `    light: ${one(palettes[id].light)}`); }
   let end = -1; if (lines[0] === '---') for (let i = 1; i < lines.length; i++) if (/^---[ \t]*$/.test(lines[i])) { end = i; break; }
@@ -716,7 +725,12 @@ function refit() {                  // everything that depends on the window siz
 /* ───────── camera ───────── */
 const chain = n => { const a = []; while (n) { a.unshift(n); n = n.parent; } return a; };
 let wholeNow = false;               // at the overview, 0 a second time shows the whole chart instead of the start view
-const startOf = () => (root && SET.starts?.[root.text]) || null;
+const setStartOf = () => (root && SET.starts?.[root.text]) || null;   // the start view this outline has, wherever it was set
+const startOf = () => {           // …and whether it applies here: the same theme, and a window shape that lays the chart out the same way (the test that re-lays it out)
+  const s = setStartOf(); if (!s) return null;
+  if (s.th && s.th !== TH.id || s.a && Math.abs(Math.log(laidFor / s.a)) > 0.22) return null;
+  return s;
+};
 function startView() {              // the start view, kept as a centre and a zoom relative to the whole chart so it survives a new window shape
   const s = startOf(), W = wbox(root, root.bb), o = viewOf(root, true), l = o.l + Math.log(s.z), ed = editing && vw > 720 ? sheet.offsetWidth : 0;
   return { x: W.x0 + s.fx * (W.x1 - W.x0) - ed / 2 / Math.exp(l), y: W.y0 + s.fy * (W.y1 - W.y0), l };
@@ -725,7 +739,7 @@ function setStart(here) {           // here: this view becomes the start · othe
   const starts = { ...SET.starts };
   if (here) {
     const W = wbox(root, root.bb), o = viewOf(root, true), ed = editing && vw > 720 ? sheet.offsetWidth : 0, r = (v, k) => Math.round(v * k) / k;
-    const s = { fx: r((tgt.x + ed / 2 / Math.exp(tgt.l) - W.x0) / (W.x1 - W.x0), 1000), fy: r((tgt.y - W.y0) / (W.y1 - W.y0), 1000), z: r(Math.exp(tgt.l - o.l), 100) };
+    const s = { fx: r((tgt.x + ed / 2 / Math.exp(tgt.l) - W.x0) / (W.x1 - W.x0), 1000), fy: r((tgt.y - W.y0) / (W.y1 - W.y0), 1000), z: r(Math.exp(tgt.l - o.l), 100), th: TH.id, a: r(laidFor, 100) };
     starts[root.text] = s; focus = root; wholeNow = false; roamT = 0; setDims(performance.now()); hud(); save();
     toast('This view is now the start. 0 comes back here, and 0 again shows the whole chart. Save in outline keeps it with the file.');
   } else { delete starts[root.text]; wholeNow = false; toast('The outline starts on the whole chart again.'); if (focus === root && !roamT) flyTo(home()); }
@@ -1621,7 +1635,7 @@ function tint(role, hex) {          // a colour well moved: the palette in use b
 function keepInOutline() {          // write the look into the outline itself
   const cur = curPal(), keep = { ...DOCPAL, [cur]: pals()[cur] };   // the palette in use goes in with its colours, so the note shows where to change them
   if (editing && liveT) liveChart();
-  const next = writeFront(source, { ...SET, palette: cur }, keep, startOf());
+  const next = writeFront(source, { ...SET, palette: cur }, keep, setStartOf());
   if (next === source) { toast('The outline already carries this look.'); return; }
   const was = { src: source, title: docTitle, at: focus.i }, fo = follow, inEd = editing && ta.value === source, a = ta.selectionStart, b = ta.selectionEnd, d = next.length - source.length;
   refresh(next);
@@ -1650,9 +1664,11 @@ function showLook() {               // the panel mirrors what is chosen; it is o
   $('#lk-note').textContent = `These are its ${mode} colours.` + (own ? '' : ' Change one and you have a palette of your own.');
   $('#lk-own').hidden = !own; if (own && document.activeElement !== $('#lk-name')) $('#lk-name').value = all[cur].name;
   const k = contrast(C.ink, C.ground); $('#lk-warn').textContent = k < 4.5 ? `Ink on ground is ${k.toFixed(1)} to 1. Below 4.5, text is hard to read.` : '';
-  const st = startOf(), sb = (label, on, act) => { const b = el('button', label); b.type = 'button'; b.dataset.act = act; b.setAttribute('aria-pressed', String(on)); return b; };
-  $('#lk-start').replaceChildren(sb('Whole chart', !st, 'startWhole'), sb(st ? 'Set to this view again' : 'This view', !!st, 'startHere'));
-  $('#lk-snote').textContent = st ? 'The outline opens on the view you set. 0 returns to it.' : 'Frame the view you want, then choose This view, or press S.';
+  const st = startOf(), set0 = setStartOf(), sb = (label, on, act) => { const b = el('button', label); b.type = 'button'; b.dataset.act = act; b.setAttribute('aria-pressed', String(on)); return b; };
+  $('#lk-start').replaceChildren(sb('Whole chart', !st, 'startWhole'), sb(set0 ? 'Set to this view again' : 'This view', !!st, 'startHere'));
+  $('#lk-snote').textContent = st ? 'The outline opens on the view you set. 0 returns to it.'
+    : set0 ? `The start view was set ${set0.th && set0.th !== TH.id ? `in the ${THEMES[set0.th]?.name || set0.th} theme` : 'in a window of another shape'}, so here the outline opens on the whole chart.`
+    : 'Frame the view you want, then choose This view, or press S.';
   const lb = $('#lk-lean'); lb.hidden = !TH.lean; lb.textContent = leanOn ? 'Lean on' : 'Lean off'; lb.setAttribute('aria-pressed', String(leanOn));
 }
 for (const r of ROLES) $('#lk-' + r).addEventListener('input', e => tint(r, e.target.value));
@@ -1666,7 +1682,7 @@ lightNow.addEventListener('change', () => { if (SET.mode === 'auto') paint(); })
 
 function standalone() {             // this page again, with the current outline written into it
   const img = {}; for (const id of new Set(refs(source))) if (assets[id]) img[id] = assets[id];
-  const deck = JSON.stringify({ src: source, title: docTitle, img, set: { ...SET, fm: undefined, starts: startOf() ? { [root.text]: startOf() } : undefined }, pal: MINE[curPal()] ? { [curPal()]: MINE[curPal()] } : undefined }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const deck = JSON.stringify({ src: source, title: docTitle, img, set: { ...SET, fm: undefined, starts: setStartOf() ? { [root.text]: setStartOf() } : undefined }, pal: MINE[curPal()] ? { [curPal()]: MINE[curPal()] } : undefined }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   return `<!doctype html>
 <html lang="en" style="${esc(VARS).replace(/"/g, '&quot;')}">

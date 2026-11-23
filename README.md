@@ -62,7 +62,13 @@ The Look button opens a panel with all three. Changing one of the four colours t
 
 By default an outline opens on the whole chart. To open somewhere else, frame the view you want (scroll to zoom, drag to pan) and press `S`, or choose This view under Start in the Look panel. The outline then opens there, `0` returns to it, and `0` a second time shows the whole chart. Whole chart, under Start, clears it.
 
-The view is kept per outline, as a centre and a zoom relative to the whole chart, so it holds when the window changes size. A different theme, a window of a very different shape, or a large edit lays the chart out differently, and the view then frames a nearby area; set it again if that happens. "Save in outline" writes it into the front matter as `waypoint-start: view 0.234 0.256 6.5`: the centre across and down the chart, as fractions, and the zoom relative to the whole chart.
+The view is kept per outline, as a centre and a zoom relative to the whole chart, together with the theme and the window shape it was set in. It applies only in that theme and in windows close enough in shape to lay the chart out the same way; elsewhere, for example on a phone, the outline opens on the whole chart. "Save in outline" writes it into the front matter:
+
+```yaml
+waypoint-start: { across: 0.224, down: 0.341, zoom: 2, theme: grid, shape: 1.9 }
+```
+
+`across` and `down` are the centre of the view as fractions of the chart, `zoom` is relative to the whole chart, and `shape` is the window's width divided by its height. `theme` and `shape` are optional; without them the view applies everywhere. The built-in guide uses this to open on its title and first four sections.
 
 ## Setting the look in front matter
 
@@ -86,7 +92,7 @@ waypoint-palettes:
 | `waypoint-palette` | the id of a built-in palette (`mono`, `blueprint`, `nebius`) or one defined under `waypoint-palettes` |
 | `waypoint-mode` | `dark`, `light` or `auto` |
 | `waypoint-lean` | `off` keeps the grid floor flat in flight |
-| `waypoint-start` | `overview`, or `view <across> <down> <zoom>` as written by Save in outline |
+| `waypoint-start` | `overview`, or a view as written by Save in outline (see Start view) |
 | `waypoint-palettes` | palettes defined by this outline, each with `dark` and `light` colours |
 
 All keys are optional. A palette may give only one mode; the other is then worked out from it by swapping ground and ink and adjusting the two accents until they are readable. Each mode may also give `surface`, the colour of panels; without it, the surface is worked out from the ground.
