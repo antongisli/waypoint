@@ -1208,14 +1208,14 @@ function drawFloor() {              // rulings on whole cells: faint at rest, br
     }
   }
 }
-function drawStones(now) {          // unflown cells are outlines; a hop lights its cells in order, in the highlight first and then in ink
+function drawStones(now) {          // unflown cells are outlines; a hop lights its cells in order, in the highlight first, and the route flown stays in the accent
   for (const g of legs) {
     const flown = g.to.visited;
     if (flown !== g.was) { const live = g.was === false && flown && !reduced.matches; g.t0 = live ? now + (flight ? flight.dur * 0.12 : 0) : -1e9; g.dur = live && flight ? Math.max(380, flight.dur * 0.6) : 420; g.was = flown; }
     for (let j = 0; j < g.cells.length; j++) {
       const c = g.cells[j], p = spot(c.x + 0.5, c.y + 0.5), u = camZ * p[2]; if (u < 4 || p[0] < -u || p[0] > vw + u || p[1] < -u || p[1] > vh + u) continue;
       const t = flown ? (now - g.t0 - g.dur * j / g.cells.length) / 1000 : -1, on = t >= 0, pop = on ? 1 - Math.min(1, t / 0.18) : 0, h = (on ? 0.21 + 0.16 * pop : 0.13) * u;
-      if (on) { const fresh = 1 - sstep(0.1, 1.6, t); ctx.fillStyle = fresh > 0.02 ? `rgba(${blend(C.ink, C.highlight, fresh).map(Math.round).join(',')},${0.5 + 0.45 * fresh})` : ink(0.5); ctx.fillRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
+      if (on) { const fresh = 1 - sstep(0.1, 1.6, t); ctx.fillStyle = fresh > 0.02 ? `rgba(${blend(C.accent, C.highlight, fresh).map(Math.round).join(',')},${0.85 + 0.1 * fresh})` : acc(0.85); ctx.fillRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
       else { ctx.strokeStyle = ink(0.34); ctx.lineWidth = 1; ctx.strokeRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
     }
   }
