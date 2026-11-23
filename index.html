@@ -1779,9 +1779,10 @@ box-sizing:border-box;height:100%;display:flex;flex-direction:column;background:
 .pv button{font:500 11px/1 var(--d);letter-spacing:.14em;text-transform:uppercase;color:inherit;background:none;border:1px solid var(--r);padding:13px 18px;cursor:pointer}
 .pv button:hover{border-color:var(--i)}
 .pv button:focus-visible{outline:2px solid var(--a);outline-offset:3px}
-.pv-top{display:flex;align-items:baseline;gap:18px;padding:18px 24px 14px;border-bottom:1px solid var(--r);font-family:var(--d);font-variant-numeric:tabular-nums}
+.pv-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 18px;padding:18px 24px 14px;border-bottom:1px solid var(--r);font-family:var(--d);font-variant-numeric:tabular-nums}
 #pv-time{font-size:34px;font-weight:500;line-height:1}
 .pv .pv-top button{border:0;border-bottom:1px solid var(--r);padding:4px 0}
+@media (pointer:coarse){.pv .pv-top button{padding:26px 8px 6px;margin:-22px -8px 0}}
 #pv-clock{margin-left:auto;color:var(--i2)}#pv-count{color:var(--i2)}
 .pv-body{flex:1;min-height:0;overflow:auto;padding:20px 24px 24px;scrollbar-color:var(--r) transparent}
 #pv-path{margin:0 0 6px;font-size:13px;color:var(--i2)}
@@ -1798,7 +1799,7 @@ box-sizing:border-box;height:100%;display:flex;flex-direction:column;background:
 .pv-foot{display:flex;align-items:center;gap:12px;padding:14px 24px 18px;border-top:1px solid var(--r)}
 .pv-foot p{flex:1;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--i2)}
 .pv-foot p b{font-weight:400;color:var(--i)}`;
-const PV_HTML = `<div class="pv"><div class="pv-top"><span id="pv-time" title="Time since you left the first stop">0:00</span><button id="pv-reset">Reset</button><span id="pv-clock"></span><span id="pv-count"></span></div>
+const PV_HTML = `<div class="pv"><div class="pv-top"><span id="pv-time" title="Time since you left the first stop">0:00</span><button id="pv-reset">Reset</button><span id="pv-clock"></span><span id="pv-count"></span><button id="pv-close" title="Close the notes (N)">Close</button></div>
 <div class="pv-body"><p id="pv-path"></p><h1 id="pv-now"></h1><div id="pv-notes"></div><div id="pv-pics"></div><ul id="pv-kids"></ul></div>
 <div class="pv-foot"><p>Next: <b id="pv-next"></b></p><button id="pv-back">Back</button><button id="pv-fwd">Next</button></div></div>`;
 const notesDoc = () => pv && !pv.closed ? pv.document : pvIn ? document : null;
@@ -1833,6 +1834,7 @@ setInterval(tickNotes, 500);
 function wireNotes(d) {
   const on = (id, fn) => { d.getElementById(id).onclick = e => { fn(); e.currentTarget.blur(); }; };
   on('pv-back', prev); on('pv-fwd', next); on('pv-reset', () => { clock0 = null; tickNotes(); });
+  on('pv-close', () => toggleNotes());   // on a phone the notes cover the page, so they close themselves
 }
 function toggleNotes() {
   if (pv && !pv.closed) { pv.close(); pv = null; return; }
