@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0c2fa8">
+<meta name="theme-color" content="#000000">
 <title>Waypoint</title>
 <style id="css">
 /* the colours of the first paint only: the script sets all of these from the theme, palette and mode in use */
 :root{
-  --ground:#0c2fa8; --deep:#071c6b; --well:#051659; --inset:#0a2794;
-  --ink:#fbfaf5; --ink-2:rgba(251,250,245,.72); --ink-3:rgba(251,250,245,.42); --rule:rgba(251,250,245,.3);
-  --accent:#ffb224;
-  --display:"Futura","Futura PT","Century Gothic","Avenir Next",system-ui,sans-serif;
-  --text:"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+  --ground:#000000; --deep:#0b0c10; --well:#09090d; --inset:#000000;
+  --ink:#ffffff; --ink-2:rgba(255,255,255,.74); --ink-3:rgba(255,255,255,.45); --rule:rgba(255,255,255,.32);
+  --accent:#8fdcff;
+  --display:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --text:"Helvetica Neue",Helvetica,Arial,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --veil:rgba(5,18,80,.74); --wash:rgba(7,28,107,.82);
+  --veil:rgba(0,0,0,.8); --wash:rgba(11,12,16,.82);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--ground);overflow:hidden;overscroll-behavior:none}
@@ -301,14 +301,14 @@ const GUIDE = `# Waypoint
 > A look has three parts: a theme, a palette and a mode. Any theme can wear any palette, dark or light.
 - Look, at the top right, opens a panel with all three
 - The theme decides how the outline is laid out and drawn
-  - Chart puts the points on arcs around each waypoint
-  - Grid sets them in columns on a ruled floor
+  - Grid sets the points in columns on a ruled floor
+  - Chart puts them on arcs around each waypoint
   - T steps through the themes
 - The palette is four colours
   - Ground, and ink for lettering and lines
   - Accent for where you are and the route you have flown
   - Highlight for what you point at or search for
-  - Blueprint, Mono and Nebius are built in. P steps through them
+  - Mono, Blueprint and Nebius are built in. P steps through them
 - The mode is dark, light or auto
   - Auto follows your computer's setting
   - D switches between dark and light
@@ -321,7 +321,7 @@ const GUIDE = `# Waypoint
 > Front matter is the block between two lines of three dashes at the very top of a Markdown file. Obsidian shows it as properties.
 - Save in outline, in the Look panel, writes the look into the outline as front matter
   - A followed file is saved with it, so the look travels with the note
-- waypoint-theme: chart or grid
+- waypoint-theme: grid or chart
 - waypoint-palette: blueprint, mono, nebius, or a palette of your own
 - waypoint-mode: dark, light or auto
 - waypoint-lean: off keeps the grid floor flat
@@ -369,12 +369,12 @@ let DISPLAY = 'system-ui,sans-serif', TEXT = 'system-ui,sans-serif';
    "surface" is optional and sets the colour of panels; left out, it is worked out from the ground.
    To add a palette, add an entry here. An outline can also define its own in its front matter, and so can the Look panel. */
 const PALETTES = {
-  blueprint: { name: 'Blueprint',
-    dark:  { ground: '#0c2fa8', ink: '#fbfaf5', accent: '#ffb224', highlight: '#a9d6ff', surface: '#071c6b' },
-    light: { ground: '#f4f1e8', ink: '#0c2fa8', accent: '#c2470a', highlight: '#0f7b8a' } },
   mono: { name: 'Mono',
     dark:  { ground: '#000000', ink: '#ffffff', accent: '#3350ff', highlight: '#8fdcff', surface: '#0b0c10' },
     light: { ground: '#ffffff', ink: '#000000', accent: '#3350ff', highlight: '#0077b6' } },
+  blueprint: { name: 'Blueprint',
+    dark:  { ground: '#0c2fa8', ink: '#fbfaf5', accent: '#ffb224', highlight: '#a9d6ff', surface: '#071c6b' },
+    light: { ground: '#f4f1e8', ink: '#0c2fa8', accent: '#c2470a', highlight: '#0f7b8a' } },
   nebius: { name: 'Nebius',
     dark:  { ground: '#1c1c1f', ink: '#f4f4f5', accent: '#6057f7', highlight: '#83e0d1', surface: '#26262a' },
     light: { ground: '#ffffff', ink: '#111c30', accent: '#5547ea', highlight: '#12806f' } },
@@ -423,7 +423,7 @@ const BUILTIN = Object.fromEntries(Object.entries(PALETTES).map(([id, p]) => [id
      lean                true: the floor tips back in flight (see flr and spot)
      miniHere()          the colour of "you are here" on the inset chart
      resize()            optional: rebuild whatever depends on the window size or on the colours */
-const THEMES = {}; let TH = null;
+const THEMES = { grid: null, chart: null }; let TH = null;   // the order the Look panel and T go through; the first is the default
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
 let DECK = null; try { DECK = JSON.parse(document.getElementById('deck').textContent); } catch {}
@@ -1513,7 +1513,7 @@ const acts = {
    The outline's front matter sets them. What you change here is remembered, and holds until that front matter changes.
    Save in outline writes your choice back into the front matter, so it travels with the text and with the file. */
 const ROLES = ['ground', 'ink', 'accent', 'highlight'];
-let SET = { theme: 'chart', palette: null, mode: 'dark', lean: true }, MINE = {}, DOCPAL = {}, DECKPAL = {}, VARS = '';   // MINE: palettes made here · DOCPAL: the outline's · DECKPAL: a saved file's
+let SET = { theme: 'grid', palette: null, mode: 'dark', lean: true }, MINE = {}, DOCPAL = {}, DECKPAL = {}, VARS = '';   // MINE: palettes made here · DOCPAL: the outline's · DECKPAL: a saved file's
 const lightNow = matchMedia('(prefers-color-scheme: light)'), lookEl = $('#look');
 const themeCss = document.head.appendChild(Object.assign(document.createElement('style'), { id: 'theme-css' }));
 const modeNow = () => SET.mode === 'light' || SET.mode === 'auto' && lightNow.matches ? 'light' : 'dark';
@@ -1534,7 +1534,7 @@ function initLook() {               // your last choice here, else the look a sa
   }
   try { take(JSON.parse(localStorage.getItem('waypoint.palettes')), MINE); } catch {}
   take(DECK?.pal, DECKPAL);
-  if (!THEMES[SET.theme]) SET.theme = 'chart';
+  if (!THEMES[SET.theme]) SET.theme = 'grid';
   if (!/^(?:dark|light|auto)$/.test(SET.mode)) SET.mode = 'dark';
 }
 function syncFront(src) {           // read the outline's own settings; they win whenever they have changed since they were last seen
@@ -1566,18 +1566,18 @@ function paint() {                  // colours and lettering for the theme, pale
   TH.resize?.(); skinNotes(); showLook();
 }
 function applyLook(quiet) {         // quiet: colours and lettering only, when the caller is about to lay the chart out anyway
-  const was = TH; TH = THEMES[SET.theme] || THEMES.chart; leanOn = SET.lean !== false;
+  const was = TH; TH = THEMES[SET.theme] || THEMES.grid; leanOn = SET.lean !== false;
   paint();
   if (quiet || !root || was === TH) return;
   tilt.p = tilt.vp = 0; hover = null; ripple = null; arrange(); roamT = 0; flyTo(home(), true);   // a new theme lays the outline out afresh; the trail and your place stay
 }
 function setLook(patch) {           // change part of the look, and remember it
   Object.assign(SET, patch);
-  if ('palette' in patch && patch.palette === (THEMES[SET.theme] || THEMES.chart).palette) SET.palette = null;   // the theme's own palette is "no choice": it follows the theme
+  if ('palette' in patch && patch.palette === (THEMES[SET.theme] || THEMES.grid).palette) SET.palette = null;   // the theme's own palette is "no choice": it follows the theme
   keepLook(); applyLook();
 }
 function resetLook() {              // back to what the outline says, and the theme's own palette
-  SET = { theme: 'chart', palette: null, mode: 'dark', lean: true, ...readFront(source).set, fm: SET.fm };
+  SET = { theme: 'grid', palette: null, mode: 'dark', lean: true, ...readFront(source).set, fm: SET.fm };
   keepLook(); applyLook(); sayLook();
 }
 function tint(role, hex) {          // a colour well moved: the palette in use becomes one of your own, if it was not already

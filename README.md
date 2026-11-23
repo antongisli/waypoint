@@ -4,7 +4,7 @@ Waypoint turns a Markdown outline into a chart you can fly around and present fr
 
 It is one HTML file with no dependencies and no build step. The page loads nothing from the network, and your outline stays in your browser.
 
-![The chart theme, showing a whole outline](screenshots/chart.png)
+![The grid theme, showing a whole outline](screenshots/grid.png)
 
 ## Use it
 
@@ -42,19 +42,19 @@ To chart your own outline, do any of these:
 
 The look has three parts:
 
-- **Theme**: how the outline is laid out and drawn. *Chart* puts points on arcs around each waypoint and joins the waypoints with curved arrows. *Grid* sets the outline in columns on a ruled floor that leans a little while the camera is in flight.
+- **Theme**: how the outline is laid out and drawn. *Grid*, the default, sets the outline in columns on a ruled floor that leans a little while the camera is in flight. *Chart* puts points on arcs around each waypoint and joins the waypoints with curved arrows.
 - **Palette**: four colours. *Ground* is the surface, *ink* is lettering and lines, *accent* marks where you are and the route already flown, and *highlight* marks what you point at or search for. Every palette has a dark and a light version.
 - **Mode**: dark, light, or auto, which follows the system setting.
 
-Any theme can wear any palette. The built-in palettes are Blueprint, Mono and Nebius. Each theme has a default palette: Chart wears Blueprint and Grid wears Mono.
-
-![The grid theme, showing a whole outline](screenshots/grid.png)
+Any theme can wear any palette. The built-in palettes are Mono, Blueprint and Nebius. Each theme has a default palette: Grid wears Mono and Chart wears Blueprint.
 
 ![The grid theme at a single section](screenshots/grid-stop.png)
 
+![The chart theme, showing a whole outline](screenshots/chart.png)
+
 The Look button opens a panel with all three. Changing one of the four colours there makes a palette of your own, which you can rename and which is remembered in the browser. "Save in outline" writes the current look into the outline's front matter, so it travels with the file.
 
-![The Look panel, over the chart theme in light mode](screenshots/look-panel.png)
+![The Look panel, over the grid theme](screenshots/look-panel.png)
 
 ## Setting the look in front matter
 
@@ -74,8 +74,8 @@ waypoint-palettes:
 
 | Key | Values |
 | --- | --- |
-| `waypoint-theme` | `chart` or `grid` |
-| `waypoint-palette` | the id of a built-in palette (`blueprint`, `mono`, `nebius`) or one defined under `waypoint-palettes` |
+| `waypoint-theme` | `grid` (the default) or `chart` |
+| `waypoint-palette` | the id of a built-in palette (`mono`, `blueprint`, `nebius`) or one defined under `waypoint-palettes` |
 | `waypoint-mode` | `dark`, `light` or `auto` |
 | `waypoint-lean` | `off` keeps the grid floor flat in flight |
 | `waypoint-palettes` | palettes defined by this outline, each with `dark` and `light` colours |
