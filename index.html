@@ -174,6 +174,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <dt>↑ &nbsp;Esc</dt><dd>Up one level</dd>
       <dt>0 &nbsp;Home</dt><dd>Start view; again for the whole chart</dd>
       <dt>S</dt><dd>Make this view the start</dd>
+      <dt>R</dt><dd>Start again: clear the route and the timer</dd>
       <dt>1 – 9</dt><dd>Jump to a waypoint</dd>
       <dt>/</dt><dd>Find a stop by typing</dd>
       <dt>Scroll</dt><dd>Fly in and out</dd>
@@ -276,6 +277,8 @@ waypoint-start: { across: 0.224, down: 0.341, zoom: 2, theme: grid, shape: 1.9 }
 - ↑ returns to the parent stop
 - 0 returns to the start view
   - Press it again for the whole chart
+- R starts the presentation again
+  - The route you have flown clears, and the timer resets
 - 1 to 9 jump to a waypoint
 - F fills the screen
 - Z shows a stop's picture full screen, and so does a click on it
@@ -735,6 +738,15 @@ function startView() {              // the start view, kept as a centre and a zo
   const s = startOf(), W = wbox(root, root.bb), o = viewOf(root, true), l = o.l + Math.log(s.z), ed = editing && vw > 720 ? sheet.offsetWidth : 0;
   return { x: W.x0 + s.fx * (W.x1 - W.x0) - ed / 2 / Math.exp(l), y: W.y0 + s.fy * (W.y1 - W.y0), l };
 }
+function restart() {                // R: the presentation from the top. The route and the timer clear; Undo puts them back
+  const seen = nodes.filter(n => n.visited), at = focus, clock = clock0;
+  nodes.forEach(n => { n.visited = false; }); clock0 = null; armed = !!(pv && !pv.closed || pvIn); tickNotes();
+  travel(root);
+  toast('Back to the start. The route is cleared and the timer reset.', null, { label: 'Undo', run: () => {
+    nodes.forEach(n => { n.visited = false; }); seen.forEach(n => { if (nodes.includes(n)) n.visited = true; }); clock0 = clock;
+    travel(nodes.includes(at) ? at : root);
+  } });
+}
 function setStart(here) {           // here: this view becomes the start · otherwise back to the whole chart
   const starts = { ...SET.starts };
   if (here) {
@@ -832,6 +844,10 @@ function resize() {
   stage.width = Math.round(vw * dpr); stage.height = Math.round(vh * dpr);
   const mw = mini.clientWidth, mh = mini.clientHeight; mini.width = Math.round(mw * dpr); mini.height = Math.round(mh * dpr);
   TH?.resize?.();
+}
+function legFade(g) {                // 1 for the route behind you; the route already flown but past the section you are on fades to a trace
+  const want = focus && focus !== root && g.to.sec > focus.sec ? 0.38 : 1;   // at the overview the whole route flown shows
+  g.f = g.f == null ? want : g.f + (want - g.f) * dimK; return g.f;
 }
 /* for a theme that leans: the chart is a floor that tips back in flight. Lines follow the lean; words, marks and pictures move with it but stay facing you */
 const flr = (X, Y) => { const k = PF / (PF - Y * sp); return [vw / 2 + X * k, vh / 2 + Y * cp * k, k]; };   // pixels from the centre, flat → where that lands
@@ -1051,7 +1067,7 @@ function drawLegs(Z, now) {         // hops between waypoints: dotted until flow
       const live = g.was === false && flown && !reduced.matches;
       g.t0 = live ? now + (flight ? flight.dur * 0.12 : 0) : -1e9; g.dur = live && flight ? Math.max(420, flight.dur * 0.62) : 520; g.was = flown;
     }
-    const p = flown ? ease(clamp((now - g.t0) / g.dur, 0, 1)) : 0, q = 1 - p, h = clamp(len * 0.11, 4.5, 10);
+    const p = flown ? ease(clamp((now - g.t0) / g.dur, 0, 1)) : 0, q = 1 - p, h = clamp(len * 0.11, 4.5, 10), f = legFade(g);
     const mx = q * q * x0 + 2 * q * p * cx + p * p * x1, my = q * q * y0 + 2 * q * p * cy + p * p * y1;   // the point reached so far
     if (p < 1) {
       ctx.strokeStyle = ink(0.5); ctx.lineWidth = 1.1; ctx.setLineDash([0.1, 5.5]);
@@ -1059,7 +1075,7 @@ function drawLegs(Z, now) {         // hops between waypoints: dotted until flow
       ctx.lineWidth = 1; head(x1, y1, x1 - cx, y1 - cy, h);
     }
     if (p > 0) {
-      ctx.strokeStyle = acc(0.92); ctx.lineWidth = 1.7;
+      ctx.strokeStyle = acc(0.92 * f); ctx.lineWidth = 1.7;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 + (cx - x0) * p, y0 + (cy - y0) * p, mx, my); ctx.stroke();
       head(mx, my, q * (cx - x0) + p * (x1 - cx), q * (cy - y0) + p * (y1 - cy), h);
     }
@@ -1212,10 +1228,11 @@ function drawStones(now) {          // unflown cells are outlines; a hop lights 
   for (const g of legs) {
     const flown = g.to.visited;
     if (flown !== g.was) { const live = g.was === false && flown && !reduced.matches; g.t0 = live ? now + (flight ? flight.dur * 0.12 : 0) : -1e9; g.dur = live && flight ? Math.max(380, flight.dur * 0.6) : 420; g.was = flown; }
+    const f = legFade(g);
     for (let j = 0; j < g.cells.length; j++) {
       const c = g.cells[j], p = spot(c.x + 0.5, c.y + 0.5), u = camZ * p[2]; if (u < 4 || p[0] < -u || p[0] > vw + u || p[1] < -u || p[1] > vh + u) continue;
       const t = flown ? (now - g.t0 - g.dur * j / g.cells.length) / 1000 : -1, on = t >= 0, pop = on ? 1 - Math.min(1, t / 0.18) : 0, h = (on ? 0.21 + 0.16 * pop : 0.13) * u;
-      if (on) { const fresh = 1 - sstep(0.1, 1.6, t); ctx.fillStyle = fresh > 0.02 ? `rgba(${blend(C.accent, C.highlight, fresh).map(Math.round).join(',')},${0.85 + 0.1 * fresh})` : acc(0.85); ctx.fillRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
+      if (on) { const fresh = 1 - sstep(0.1, 1.6, t); ctx.fillStyle = fresh > 0.02 ? `rgba(${blend(C.accent, C.highlight, fresh).map(Math.round).join(',')},${(0.85 + 0.1 * fresh) * Math.max(f, fresh)})` : acc(0.85 * f); ctx.fillRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
       else { ctx.strokeStyle = ink(0.34); ctx.lineWidth = 1; ctx.strokeRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
     }
   }
@@ -1982,6 +1999,7 @@ addEventListener('keydown', e => {
   else if (k === 'd' || k === 'D') acts.mode();
   else if (k === 'l' || k === 'L') acts.lean();
   else if (k === 's' || k === 'S') setStart(true);
+  else if (k === 'r' || k === 'R') restart();
   else if (k === '/') openFind();
   else if (k === '?' || k === 'k' || k === 'K') toggleKeys();
   else if (k === '=' || k === '+') { wander(); zoomAbout(vw / 2, vh / 2, 0.5); }

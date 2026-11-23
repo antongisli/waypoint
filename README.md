@@ -110,6 +110,7 @@ When an outline's front matter changes, it takes over again. Until then, a chang
 | `↑` or `Esc` | Up one level |
 | `0` or `Home` | Start view; press again for the whole chart |
 | `S` | Make the current view the start view |
+| `R` | Start the presentation again: clear the route flown and reset the timer |
 | `1` to `9` | Jump to a waypoint |
 | `/` | Find a stop by typing |
 | `E` | Open the editor beside the chart |
