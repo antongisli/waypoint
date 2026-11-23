@@ -58,6 +58,12 @@ The Look button opens a panel with all three. Changing one of the four colours t
 
 ![The Look panel, over the grid theme](screenshots/look-panel.png)
 
+## Start view
+
+By default an outline opens on the whole chart. To open somewhere else, frame the view you want (scroll to zoom, drag to pan) and press `S`, or choose This view under Start in the Look panel. The outline then opens there, `0` returns to it, and `0` a second time shows the whole chart. Whole chart, under Start, clears it.
+
+The view is kept per outline, as a centre and a zoom relative to the whole chart, so it holds when the window changes size. A different theme, a window of a very different shape, or a large edit lays the chart out differently, and the view then frames a nearby area; set it again if that happens. "Save in outline" writes it into the front matter as `waypoint-start: view 0.234 0.256 6.5`: the centre across and down the chart, as fractions, and the zoom relative to the whole chart.
+
 ## Setting the look in front matter
 
 ```yaml
@@ -80,6 +86,7 @@ waypoint-palettes:
 | `waypoint-palette` | the id of a built-in palette (`mono`, `blueprint`, `nebius`) or one defined under `waypoint-palettes` |
 | `waypoint-mode` | `dark`, `light` or `auto` |
 | `waypoint-lean` | `off` keeps the grid floor flat in flight |
+| `waypoint-start` | `overview`, or `view <across> <down> <zoom>` as written by Save in outline |
 | `waypoint-palettes` | palettes defined by this outline, each with `dark` and `light` colours |
 
 All keys are optional. A palette may give only one mode; the other is then worked out from it by swapping ground and ink and adjusting the two accents until they are readable. Each mode may also give `surface`, the colour of panels; without it, the surface is worked out from the ground.
@@ -95,7 +102,8 @@ When an outline's front matter changes, it takes over again. Until then, a chang
 | `→` or `Space` | Next stop |
 | `←` | Previous stop |
 | `↑` or `Esc` | Up one level |
-| `0` or `Home` | Whole chart |
+| `0` or `Home` | Start view; press again for the whole chart |
+| `S` | Make the current view the start view |
 | `1` to `9` | Jump to a waypoint |
 | `/` | Find a stop by typing |
 | `E` | Open the editor beside the chart |
