@@ -1,0 +1,2120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c2fa8">
+<title>Waypoint</title>
+<style id="css">
+/* the colours of the first paint only: the script sets all of these from the theme, palette and mode in use */
+:root{
+  --ground:#0c2fa8; --deep:#071c6b; --well:#051659; --inset:#0a2794;
+  --ink:#fbfaf5; --ink-2:rgba(251,250,245,.72); --ink-3:rgba(251,250,245,.42); --rule:rgba(251,250,245,.3);
+  --accent:#ffb224;
+  --display:"Futura","Futura PT","Century Gothic","Avenir Next",system-ui,sans-serif;
+  --text:"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --veil:rgba(5,18,80,.74); --wash:rgba(7,28,107,.82);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--ground);overflow:hidden;overscroll-behavior:none}
+body{font:13px/1.45 var(--text);color:var(--ink);-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+::selection{background:var(--accent);color:var(--deep)}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#stage.point{cursor:pointer}#stage.zin{cursor:zoom-in}#stage.zout{cursor:zoom-out}#stage.grabbing{cursor:grabbing}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+
+.hud{position:fixed;inset:0;pointer-events:none;font-family:var(--display)}
+.hud>*{pointer-events:auto;transition:opacity .5s cubic-bezier(.16,1,.3,1)}
+.cap{font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+
+#crumb{position:absolute;left:28px;top:20px;right:500px;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:13px;letter-spacing:.03em}
+#crumb button{padding:5px 0;border-bottom:1px solid transparent;max-width:38ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+#crumb button:hover{border-bottom-color:var(--ink);color:var(--ink)}
+#crumb button[aria-current]{color:var(--ink)}
+#crumb i{font-style:normal;color:var(--ink-3)}
+
+#tools{position:absolute;right:28px;top:20px;display:flex;gap:24px}
+#tools button{padding:5px 0;border-bottom:1px solid transparent}
+#tools button:hover,#tools button[aria-expanded=true]{border-bottom-color:var(--ink)}
+#tools #follow{color:var(--ink-2);max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tools #follow:hover{color:var(--ink)}
+body.following #crumb{right:780px}
+
+#progress{position:absolute;left:28px;bottom:24px;display:flex;align-items:center;gap:16px}
+#segs{display:flex;gap:5px;width:min(360px,34vw)}
+.seg{height:20px;min-width:6px;position:relative}
+.seg::before,.seg i{content:"";position:absolute;left:0;top:9px;height:2px}
+.seg::before{right:0;background:var(--rule)}
+.seg i{right:0;background:var(--accent);transform:scaleX(var(--p,0));transform-origin:left;transition:transform .5s cubic-bezier(.16,1,.3,1)}
+.seg:hover::before{background:var(--ink)}
+#count{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
+
+#mini{position:absolute;right:28px;bottom:24px;width:216px;height:136px;border:1px solid var(--rule);background:var(--inset);cursor:crosshair;touch-action:none}
+#mini.off{opacity:0!important;pointer-events:none}
+#link{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);color:var(--deep);background:var(--ink);padding:10px 18px;text-decoration:none;white-space:nowrap}
+#link:hover{background:var(--accent)}
+#hint{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);color:var(--ink-2);white-space:nowrap}
+#hint.gone{opacity:0;pointer-events:none}
+#steps{position:absolute;right:28px;bottom:24px;display:none;gap:10px}
+#steps button{padding:14px 20px;border:1px solid var(--rule);background:var(--inset)}
+@media (pointer:coarse){#steps{display:flex}#mini{bottom:86px}}
+body.idle{cursor:none}body.idle #stage{cursor:none}
+body.idle #tools,body.idle #hint{opacity:0}
+body.idle #mini,body.idle #crumb,body.idle #progress,body.idle #steps{opacity:.55}
+body.closeup.idle .hud>*{opacity:0}
+body.closeup #mini,body.looking #mini,body.looking #steps{opacity:0;pointer-events:none}
+
+#keys{position:absolute;right:28px;top:58px;width:290px;background:var(--deep);border:1px solid var(--rule);padding:18px 20px;font-family:var(--text)}
+#keys dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:9px 16px;align-items:baseline}
+#keys dt{font:12px var(--mono);color:var(--ink);white-space:nowrap}
+#keys dd{margin:0;color:var(--ink-2)}
+
+#look{position:absolute;right:28px;top:58px;width:324px;max-height:calc(100% - 92px);overflow:auto;background:var(--deep);border:1px solid var(--rule);padding:18px 20px;font-family:var(--text);display:grid;gap:18px;scrollbar-color:var(--ink-3) transparent}
+#look h3{margin:0 0 9px;font-weight:inherit;font-family:var(--display);color:var(--ink-2)}
+#look p{margin:9px 0 0;font-size:12px;color:var(--ink-2)}
+.opts{display:flex;flex-wrap:wrap;gap:4px 20px;font-family:var(--display)}
+.opts button{padding:4px 0;border-bottom:1px solid transparent;color:var(--ink-2)}
+.opts button:hover{color:var(--ink)}
+.opts button[aria-pressed=true]{color:var(--ink);border-bottom-color:var(--ink)}
+#lk-pals{display:grid;margin:0 -8px}
+#lk-pals button{display:flex;align-items:center;gap:12px;padding:6px 8px;text-align:left;color:var(--ink-2)}
+#lk-pals button:hover{color:var(--ink)}
+#lk-pals button[aria-pressed=true]{color:var(--ink);background:var(--well);box-shadow:inset 0 0 0 1px var(--rule)}
+#lk-pals small{margin-left:auto;font-size:11px;color:var(--ink-2)}
+.sw{display:flex;border:1px solid var(--rule)}.sw i{display:block;width:13px;height:13px}
+#lk-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#lk-cols label{display:grid;gap:6px;font-size:12px;color:var(--ink-2);cursor:pointer}
+#lk-cols input{-webkit-appearance:none;appearance:none;display:block;width:100%;height:34px;padding:0;border:1px solid var(--rule);background:none;cursor:pointer}
+#lk-cols input::-webkit-color-swatch-wrapper{padding:0}
+#lk-cols input::-webkit-color-swatch{border:0;border-radius:0}
+#lk-cols input::-moz-color-swatch{border:0;border-radius:0}
+#lk-own{display:flex;align-items:baseline;gap:16px;margin-top:10px}
+#lk-name{flex:1;min-width:0;font:13px/1.3 var(--text);color:var(--ink);background:var(--well);border:1px solid var(--rule);padding:7px 9px;caret-color:var(--accent);user-select:text;-webkit-user-select:text}
+#lk-name:focus-visible,#lk-cols input:focus-visible{outline-offset:2px}
+#look #lk-warn{color:var(--accent)}#lk-warn:empty{display:none}
+#look .row{gap:10px 20px}
+#lk-own button{padding:5px 0;border-bottom:1px solid transparent;color:var(--ink-2)}#lk-own button:hover{color:var(--ink);border-bottom-color:var(--ink)}
+
+#find{position:absolute;left:50%;top:58px;transform:translateX(-50%);width:min(540px,calc(100vw - 28px));background:var(--deep);border:1px solid var(--rule)}
+#find:focus-within{border-color:var(--ink)}
+#find .bar{display:flex;align-items:baseline;gap:16px;padding:0 20px;border-bottom:1px solid var(--rule)}
+#q{flex:1;min-width:0;font:500 20px/1.2 var(--display);color:var(--ink);background:none;border:0;padding:15px 0 14px;caret-color:var(--accent);user-select:text;-webkit-user-select:text}
+#q:focus-visible{outline:0}
+#q::placeholder{color:var(--ink-3)}
+#found{color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+#where{margin:0;padding:10px 20px 12px;font:13px/1.45 var(--text);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+:root{--edw:clamp(360px,38vw,620px)}
+#sheet{position:fixed;left:0;top:0;bottom:0;width:var(--edw);display:flex;flex-direction:column;gap:12px;padding:20px 24px 18px;background:var(--deep);border-right:1px solid var(--rule);font-family:var(--text);transform:translateX(-101%);transition:transform .38s cubic-bezier(.16,1,.3,1)}
+#sheet.open{transform:none}
+.ed-top{display:flex;align-items:baseline;gap:16px}
+#sheet h2{font:500 22px/1.1 var(--display);margin:0;letter-spacing:-.01em}
+#edstate{flex:1;min-width:0;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed-top button{padding:5px 0;border-bottom:1px solid transparent}.ed-top button:hover{border-bottom-color:var(--ink)}
+#sheet p{margin:0;font-size:12.5px;color:var(--ink-2);max-width:68ch}
+#sheet textarea{flex:1;min-height:0;font:13px/1.6 var(--mono);color:var(--ink);background:var(--well);border:1px solid var(--rule);padding:14px 16px;resize:none;caret-color:var(--accent);user-select:text;-webkit-user-select:text;scrollbar-color:var(--ink-3) transparent}
+#sheet textarea:focus-visible{outline:0;border-color:var(--ink-3)}
+#sheet .err{color:var(--accent)}#sheet .err:empty{display:none}
+.row .go:disabled{opacity:.4;cursor:default}.row .go:disabled:hover{background:var(--ink)}
+body.editing #hint{opacity:0;pointer-events:none}
+@media (min-width:721px){body.editing #toast,body.editing #drop.pin{left:calc(50% + var(--edw) / 2);max-width:calc(100vw - var(--edw) - 40px)}}   /* messages sit over the chart, not over the editor */
+.row{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;font-family:var(--display)}
+.row .go{background:var(--ink);color:var(--deep);padding:10px 18px}
+.row .go:hover{background:var(--accent)}
+.row .quiet{padding:5px 0;border-bottom:1px solid transparent}
+.row .quiet:hover{border-bottom-color:var(--ink)}
+.row .push{margin-left:auto}
+
+#pvin{position:fixed;right:0;top:0;bottom:0;width:min(440px,100vw);border-left:1px solid var(--rule)}
+#drop{position:fixed;inset:14px;border:1px dashed var(--ink);display:grid;place-items:center;font:500 clamp(22px,3.2vw,40px) var(--display);background:var(--wash);pointer-events:none}
+#drop.pin{inset:auto auto 72px 50%;transform:translateX(-50%);display:block;border:0;background:var(--ink);color:var(--deep);padding:10px 18px;font:500 11px/1.45 var(--display);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+#toast{position:fixed;left:50%;top:22px;transform:translateX(-50%);background:var(--ink);color:var(--deep);padding:10px 16px;display:flex;gap:18px;align-items:center;font-family:var(--display)}
+#toast button{border-bottom:1px solid currentColor;white-space:nowrap;flex:none}
+[hidden]{display:none!important}
+@media (max-width:720px){
+  #mini{width:132px;height:84px;right:14px;bottom:60px}#tools{right:14px;gap:16px}#tools [data-act=full]{display:none}#look{left:14px;right:14px;width:auto}#crumb{left:14px;right:14px;top:50px}
+  #progress{left:14px;bottom:18px}#segs{width:46vw}#hint{display:none}#link{bottom:60px}
+  #steps{right:14px;bottom:64px}#link{bottom:70px;left:14px;transform:none}
+  body.finding #crumb{opacity:0;pointer-events:none}#sheet{width:100vw;border-right:0;padding:16px 14px 14px}
+}
+@media (max-width:720px) and (pointer:coarse){#mini{bottom:126px}}
+@media (prefers-reduced-motion:reduce){.hud>*,.seg i,#sheet{transition:none}}
+</style>
+</head>
+<body>
+<!--
+THESIS: The outline is the terrain. Text lives in the chart and resolves from specks into sentences as the camera approaches; no slide panel sits beside the picture.
+OWN-WORLD: A cyanotype star chart. One drenched cobalt ground, white ink, hairline graticule, flat specks and rings, Futura lettering, amber reserved for "you are here" and the trail already flown.
+STORY: The presenter sees the whole route, flies it stop by stop, and can wander off and return without losing place.
+FIRST VIEWPORT: Full-bleed chart. Outline title top left at display size; numbered waypoints snake across in rows with their points fanned on orbit arcs. Location top left, progress bottom left, inset chart bottom right.
+FORM: Direction pinned by the user (text as terrain, spring camera, route layout); no seed roll.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<canvas id="stage" role="img" aria-label="Outline chart"></canvas>
+
+<div class="hud">
+  <nav id="crumb" aria-label="Location"></nav>
+  <div id="tools" class="cap">
+    <button id="follow" data-act="unfollow" hidden></button>
+    <button data-act="find">Find</button>
+    <button data-act="edit">Outline</button>
+    <button data-act="notes">Notes</button>
+    <button data-act="look" aria-expanded="false" aria-controls="look" title="Theme, palette and colours">Look</button>
+    <button data-act="full">Fullscreen</button>
+    <button data-act="keys" aria-expanded="false" aria-controls="keys">Keys</button>
+  </div>
+  <div id="keys" hidden>
+    <dl>
+      <dt>→ &nbsp;Space</dt><dd>Next stop</dd>
+      <dt>←</dt><dd>Previous stop</dd>
+      <dt>↑ &nbsp;Esc</dt><dd>Up one level</dd>
+      <dt>0 &nbsp;Home</dt><dd>Whole chart</dd>
+      <dt>1 – 9</dt><dd>Jump to a waypoint</dd>
+      <dt>/</dt><dd>Find a stop by typing</dd>
+      <dt>Scroll</dt><dd>Fly in and out</dd>
+      <dt>Drag</dt><dd>Pan, and throw</dd>
+      <dt>Click</dt><dd>Fly to that point</dd>
+      <dt>E</dt><dd>Edit the outline</dd>
+      <dt>N</dt><dd>Speaker notes in a second window</dd>
+      <dt>F</dt><dd>Fullscreen</dd>
+      <dt>Z</dt><dd>A stop's picture full screen, and back</dd>
+      <dt>T</dt><dd>Next theme: chart or grid</dd>
+      <dt>P</dt><dd>Next palette</dd>
+      <dt>D</dt><dd>Dark or light</dd>
+      <dt>L</dt><dd>On the grid: lean in flight, off and on</dd>
+      <dt>Paste</dt><dd>Chart an outline, or pin a picture here</dd>
+      <dt>Drop</dt><dd>An outline file, or a picture onto a stop</dd>
+    </dl>
+  </div>
+  <div id="look" hidden>
+    <div><h3 class="cap" id="lk-ht">Theme</h3><div class="opts cap" id="lk-theme" role="group" aria-labelledby="lk-ht"></div></div>
+    <div><h3 class="cap" id="lk-hm">Mode</h3><div class="opts cap" id="lk-mode" role="group" aria-labelledby="lk-hm"></div></div>
+    <div><h3 class="cap" id="lk-hp">Palette</h3><div id="lk-pals" role="group" aria-labelledby="lk-hp"></div></div>
+    <div>
+      <h3 class="cap" id="lk-hc">Colours</h3>
+      <div id="lk-cols" role="group" aria-labelledby="lk-hc">
+        <label><input type="color" id="lk-ground"><span>Ground</span></label>
+        <label><input type="color" id="lk-ink"><span>Ink</span></label>
+        <label><input type="color" id="lk-accent"><span>Accent</span></label>
+        <label><input type="color" id="lk-highlight"><span>Highlight</span></label>
+      </div>
+      <p id="lk-note"></p>
+      <div id="lk-own" hidden><input id="lk-name" type="text" aria-label="Name of this palette" maxlength="32" autocomplete="off" spellcheck="false"><button class="quiet cap" data-act="unpal">Remove</button></div>
+      <p id="lk-warn" role="status"></p>
+    </div>
+    <div class="row cap">
+      <button class="go" data-act="keep" title="Write the theme, palette and mode into the outline's front matter, so they travel with it">Save in outline</button>
+      <button class="quiet" data-act="lean" id="lk-lean">Lean on</button>
+      <button class="quiet push" data-act="unlook" title="Back to what the outline says, or the theme's own colours">Reset</button>
+    </div>
+  </div>
+  <div id="find" role="search" hidden>
+    <div class="bar">
+      <input id="q" type="text" aria-label="Find a stop" aria-describedby="where" placeholder="Find a stop" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+      <span id="found" class="cap"></span>
+    </div>
+    <p id="where" aria-live="polite"></p>
+  </div>
+  <div id="progress"><div id="segs"></div><span id="count" class="cap"></span></div>
+  <a id="link" class="cap" target="_blank" rel="noopener noreferrer" hidden></a>
+  <div id="hint" class="cap">Scroll to fly · Drag to pan · → Next stop</div>
+  <div id="steps" class="cap"><button data-act="prev">Back</button><button data-act="next">Next</button></div>
+  <canvas id="mini" role="img" aria-label="Inset chart. Click to move the view."></canvas>
+</div>
+
+<div id="live" class="sr" aria-live="polite"></div>
+
+<aside id="sheet" aria-labelledby="sheet-h" hidden>
+  <div class="ed-top"><h2 id="sheet-h">Outline</h2><span id="edstate" class="cap" aria-live="polite"></span><button class="cap" data-act="close" title="Close the editor (Esc)">Done</button></div>
+  <p>Headings become waypoints and bullets the points around them; indent a bullet to nest it. A line starting with &gt; is a speaker note, and a line like ![](chart.png) is a picture. The chart follows as you type and as you move the caret.</p>
+  <textarea id="src" spellcheck="false" aria-label="Outline in Markdown"></textarea>
+  <div class="err" id="err" role="alert"></div>
+  <div class="row cap">
+    <button class="go" data-act="save" id="edsave" hidden>Save</button>
+    <button class="quiet" data-act="open">Open a file</button>
+    <button class="quiet" data-act="pic">Add a picture</button>
+    <button class="quiet" data-act="sample" id="sample">Load the guide</button>
+    <button class="quiet" data-act="export">Save as a file</button>
+    <input type="file" id="file" accept=".md,.markdown,.txt,text/*" hidden>
+    <input type="file" id="picfile" accept="image/*" multiple hidden>
+  </div>
+</aside>
+<div id="drop" hidden>Drop to chart this outline</div>
+<div id="toast" class="cap" hidden><span></span><button data-act="toastdo" hidden></button><button data-act="toastdo2" hidden></button><button data-act="undo">Undo</button></div>
+<script type="application/json" id="deck">null</script>
+
+<script>
+(() => {
+'use strict';
+
+const LT = '<', CODE = document.currentScript.textContent, CSS = document.getElementById('css').textContent;
+const SHELL = [...document.body.childNodes]
+  .filter(n => n.nodeType === 8 || n.nodeType === 1 && n.matches('#stage,.hud,#live,#sheet,#drop,#toast'))
+  .map(n => n.nodeType === 8 ? LT + '!--' + n.data + '-->' : n.outerHTML).join('\n');
+
+const GUIDE = `# Waypoint
+
+## Fly
+- Scroll to fly in and out, toward the cursor
+- Drag to pan. Let go while moving to throw the chart
+- Click any line to fly to it
+- Double-click empty space to drop closer
+
+## Present
+> Notes like this one show only in the notes window. Press N to open it.
+- → or Space moves to the next stop, ← goes back
+  - The page keys on a clicker do the same
+- ↑ returns to the parent stop
+- 0 shows the whole chart
+- 1 to 9 jump to a waypoint
+- F fills the screen
+- Z shows a stop's picture full screen, and so does a click on it
+- N opens your speaker notes in a second window
+  - Write a note as a line starting with > under any stop
+  > The notes window also shows a timer, the clock and the next stop.
+
+## Find
+- Press / and type a few letters
+  - The chart flies to the best match as you type
+  - ↓ and ↑ step through the other matches
+- Enter stays there. Esc returns to where you were
+
+## Bring your own outline
+- Paste an outline anywhere on the chart
+- Drop a Markdown or text file on it
+  - Chrome and Edge then follow that file: save it and the chart redraws
+  - Drags from Obsidian's file list work once you open the vault folder
+- Press E to write or edit in place
+  - The editor opens beside the chart, and the chart follows as you type
+- Drop a picture on any stop to pin it there
+  ![A small chart with a route across it](img:chart)
+- What it reads
+  - Headings become numbered waypoints
+  - Bullets become the points around them
+  - Indented bullets nest as deep as you like
+
+## Change the look
+> A look has three parts: a theme, a palette and a mode. Any theme can wear any palette, dark or light.
+- Look, at the top right, opens a panel with all three
+- The theme decides how the outline is laid out and drawn
+  - Chart puts the points on arcs around each waypoint
+  - Grid sets them in columns on a ruled floor
+  - T steps through the themes
+- The palette is four colours
+  - Ground, and ink for lettering and lines
+  - Accent for where you are and the route you have flown
+  - Highlight for what you point at or search for
+  - Blueprint, Mono and Nebius are built in. P steps through them
+- The mode is dark, light or auto
+  - Auto follows your computer's setting
+  - D switches between dark and light
+- On the grid the floor leans a little in flight
+  - L keeps it flat
+- Change a colour in the panel and you have a palette of your own
+  - Give it a name there. This browser keeps it
+
+## Keep the look with the outline
+> Front matter is the block between two lines of three dashes at the very top of a Markdown file. Obsidian shows it as properties.
+- Save in outline, in the Look panel, writes the look into the outline as front matter
+  - A followed file is saved with it, so the look travels with the note
+- waypoint-theme: chart or grid
+- waypoint-palette: blueprint, mono, nebius, or a palette of your own
+- waypoint-mode: dark, light or auto
+- waypoint-lean: off keeps the grid floor flat
+- waypoint-palettes holds the colours of each palette by name
+  - Each one has a dark line and a light line
+  - Each line gives ground, ink, accent and highlight as hex colours
+  - Change a colour there and the chart follows
+  - Copy a palette under a new name to make another
+  - Then set waypoint-palette to that name
+- When the outline's front matter changes, it takes over
+  - Until then, what you pick with Look or the keys holds
+  - Reset, in the Look panel, goes back to what the outline says
+
+## Take it with you
+- Save as a file writes one HTML file with your outline inside
+- Pictures you added travel inside it
+- That file opens offline in any browser
+- Your place is remembered between visits
+`;
+
+/* ───────── helpers ───────── */
+const $ = s => document.querySelector(s);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+/* ───────── colour: a palette names four colours; every other colour on the page is worked out from them ───────── */
+const rgbOf = h => { h = h.trim().slice(1); if (h.length === 3) h = h.replace(/./g, '$&$&'); const v = parseInt(h, 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
+const hexOf = c => '#' + c.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+const isHex = s => typeof s === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.trim());
+const blend = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const lum = c => { const f = v => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const BLACK = [0, 0, 0], WHITE = [255, 255, 255];
+let INK = '251,250,245', ACC = '255,178,36', HI = '169,214,255', GND = '12,47,168', ONACC = '7,28,107', UNDER = '7,28,107', C = null, DARK = true;   // set by paint()
+const ink = a => `rgba(${INK},${a})`, acc = a => `rgba(${ACC},${a})`, hi = a => `rgba(${HI},${a})`, gnd = a => `rgba(${GND},${a})`;
+let DISPLAY = 'system-ui,sans-serif', TEXT = 'system-ui,sans-serif';
+
+/* ═══════════════════════════ PALETTES ═══════════════════════════
+   A palette is four colours, given once for dark mode and once for light mode:
+     ground      the surface everything sits on
+     ink         lettering and lines
+     accent      where you are, and the trail already flown
+     highlight   what you point at or search for
+   "surface" is optional and sets the colour of panels; left out, it is worked out from the ground.
+   To add a palette, add an entry here. An outline can also define its own in its front matter, and so can the Look panel. */
+const PALETTES = {
+  blueprint: { name: 'Blueprint',
+    dark:  { ground: '#0c2fa8', ink: '#fbfaf5', accent: '#ffb224', highlight: '#a9d6ff', surface: '#071c6b' },
+    light: { ground: '#f4f1e8', ink: '#0c2fa8', accent: '#c2470a', highlight: '#0f7b8a' } },
+  mono: { name: 'Mono',
+    dark:  { ground: '#000000', ink: '#ffffff', accent: '#3350ff', highlight: '#8fdcff', surface: '#0b0c10' },
+    light: { ground: '#ffffff', ink: '#000000', accent: '#3350ff', highlight: '#0077b6' } },
+  nebius: { name: 'Nebius',
+    dark:  { ground: '#1c1c1f', ink: '#f4f4f5', accent: '#6057f7', highlight: '#83e0d1', surface: '#26262a' },
+    light: { ground: '#ffffff', ink: '#111c30', accent: '#5547ea', highlight: '#12806f' } },
+};
+function side(o) {                  // one mode as written → checked colours, or null
+  if (!o || typeof o !== 'object' || !isHex(o.ground) || !isHex(o.ink)) return null;
+  const tidyHex = h => hexOf(rgbOf(h)), s = { ground: tidyHex(o.ground), ink: tidyHex(o.ink) };
+  s.accent = isHex(o.accent) ? tidyHex(o.accent) : s.ink; s.highlight = isHex(o.highlight) ? tidyHex(o.highlight) : s.accent;
+  if (isHex(o.surface)) s.surface = tidyHex(o.surface);
+  return s;
+}
+function flip(s) {                  // the other mode of a palette that gives only one: ground and ink trade places, and the two accents shift until they read
+  const g = rgbOf(s.ink), i = rgbOf(s.ground), fit = c => { let v = rgbOf(c); for (let k = 0; k < 12 && contrast(v, g) < 3; k++) v = blend(v, i, 0.12); return hexOf(v); };
+  return { ground: s.ink, ink: s.ground, accent: fit(s.accent), highlight: fit(s.highlight) };
+}
+function norm(raw, id) {            // a palette as written, in code or in front matter → { name, dark, light }, or null
+  if (!raw || typeof raw !== 'object') return null;
+  let d = side(raw.dark), l = side(raw.light); const one = d || l ? null : side(raw);
+  if (one) { if (lum(rgbOf(one.ground)) < lum(rgbOf(one.ink))) d = one; else l = one; }
+  if (!d && !l) return null;
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 32) : id.replace(/^./, c => c.toUpperCase());
+  return { name, dark: d || flip(l), light: l || flip(d) };
+}
+const BUILTIN = Object.fromEntries(Object.entries(PALETTES).map(([id, p]) => [id, norm(p, id)]));
+
+/* ═══════════════════════════ THEMES ═══════════════════════════
+   A theme is one object in THEMES: how the outline is laid out and how it is drawn. Colours never live in a theme. It draws with
+   ink(a), acc(a), hi(a) and gnd(a), and the palette in use decides what those are. To add a theme, copy one of the two blocks
+   further down (THEME: chart, THEME: grid), change it, and give it an id of its own.
+
+     id, name            the word used in front matter, and the name shown in the Look panel
+     palette             the palette it wears unless another is chosen
+     faces               [lettering for headings, lettering for text]; ui is the lettering of buttons and panels, where that differs
+     soft                how strong secondary ink, faint ink and hairlines are, as shares of ink
+     css, notesCss       style rules that apply only while this theme is on, for the page and for the speaker notes
+     font(n) textX(n) markR(n) headEm(n, len) headText(s)
+                         lettering of a stop, where its text starts, the size of its mark, where a heading wraps, and its case
+     arrange(root, aspect)
+                         measure(n) every stop, give each one a place (wx, wy) and a type size (ws) in one shared world, set n.bb
+                         to the box around the stop and all below it (in the stop's own units), and fill legs with the route
+     padLeft(n) frame(n, box)
+                         optional: room to keep clear beside a stop, and a chance to widen what the camera frames
+     ground(now) route(now) before(n, sx, sy, fpx, rel) mark(n, sx, sy, fpx, a, rel, now) over(now)
+                         drawing, in this order: the ground, the route, what lies beneath a stop, the stop's mark, what lies over it all
+     hoverInk            true: a stop under the pointer takes the highlight colour; otherwise it is underlined
+     lean                true: the floor tips back in flight (see flr and spot)
+     miniHere()          the colour of "you are here" on the inset chart
+     resize()            optional: rebuild whatever depends on the window size or on the colours */
+const THEMES = {}; let TH = null;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36); };
+let DECK = null; try { DECK = JSON.parse(document.getElementById('deck').textContent); } catch {}
+if (!DECK || typeof DECK.src !== 'string') DECK = null;      // a saved file carries its own outline
+const BASE = DECK ? DECK.src : GUIDE, BASE_TITLE = DECK?.title || null;
+const STORE = 'waypoint.v2' + (DECK ? ':' + hash(DECK.src) : '');
+
+/* ───────── pictures: an outline names them; added ones are kept as data inside the page ───────── */
+const PAPER = '#fbfaf5';
+const GUIDE_PICS = { chart: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 640 360"><rect width="640" height="360" fill="#fbfaf5"/><g fill="none" stroke="#0c2fa8" stroke-linecap="round" stroke-linejoin="round"><path d="M0 90H640M0 180H640M0 270H640M160 0V360M320 0V360M480 0V360" stroke-width=".6" opacity=".32"/><path d="M-10 236C60 216 92 158 150 152S250 204 302 178 362 86 430 80 540 140 650 108" stroke-width="2.6"/><path d="M-10 272C70 250 102 194 152 188S250 240 312 213 374 122 432 116 540 174 650 144" stroke-width="1.3" opacity=".5"/><path d="M-10 308C80 284 112 230 156 225S252 276 322 248 386 158 436 152 542 208 650 180" stroke-width="1.3" opacity=".28"/><path d="M112 78 236 112M262 124 352 272M398 286 506 262" stroke-width="1.6" stroke-dasharray="2 8"/><circle cx="98" cy="74" r="14" stroke-width="1.8"/><circle cx="250" cy="116" r="14" stroke-width="1.8"/><circle cx="520" cy="258" r="14" stroke-width="1.8"/><path d="M566 32V92M536 62H596M551 47 581 77M581 47 551 77" stroke-width="1.4"/></g><circle cx="374" cy="282" r="14" fill="#ffb224"/><circle cx="374" cy="282" r="23" fill="none" stroke="#ffb224" stroke-width="1.6"/></svg>`) };
+const BUILT = { ...GUIDE_PICS, ...(DECK && DECK.img && typeof DECK.img === 'object' ? DECK.img : null) };
+const assets = { ...BUILT };        // id → data URL; an outline refers to one as img:id
+try { Object.assign(assets, JSON.parse(localStorage.getItem(STORE + ':img'))); } catch {}
+const PIC_EXT = /\.(?:png|jpe?g|gif|webp|svg|avif|bmp)$/i, PIC_URL = /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|svg|avif)(?:[?#]\S*)?$/i;
+const EMBEDS = /!\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)/g;
+const refs = src => [...src.matchAll(/\(img:([a-z0-9]+)\)/g)].map(m => m[1]);
+const pix = new Map();              // picture source as written → the loaded image
+let relayT = 0, builtAt = 0;
+function relay() { if (!relayT) relayT = setTimeout(() => { relayT = 0; if (root) reflow(); }, 40); }
+function pic(src) {
+  let p = pix.get(src); if (p) return p;
+  const own = src.startsWith('img:'), url = own ? assets[src.slice(4)] : src, fine = own ? typeof url === 'string' && /^data:image\//.test(url) : !!url;
+  p = { img: new Image(), ok: false, bad: !fine, ar: 16 / 9, used: false, opaque: /^data:image\/jpe?g|\.jpe?g(?:$|[?#])/i.test(url || ''),
+    label: own ? 'This picture is missing' : /^data:/.test(src) ? 'This picture could not be read' : 'No picture at ' + src.replace(/[?#].*$/, '').replace(/^.*\//, '').slice(-34) };
+  pix.set(src, p);
+  p.ready = new Promise(done => {
+    if (!fine) { done(); return; }
+    p.img.onload = () => { p.ok = true; p.ar = clamp(p.img.naturalWidth / p.img.naturalHeight || 1.5, 0.2, 6); done(); if (p.used) relay(); };
+    p.img.onerror = () => { p.bad = true; done(); if (p.used) relay(); };
+    p.img.decoding = 'async'; p.img.src = url;
+  });
+  return p;
+}
+function pics(raw) {                // every picture a line names, Markdown or Obsidian style
+  const out = [];
+  raw.replace(/!\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]/g, (_, f) => { f = f.trim(); if (PIC_EXT.test(f)) out.push({ src: f, alt: f.replace(/^.*\//, '').replace(/\.[^.]+$/, '') }); return ''; })
+    .replace(/!\[([^\]]*)\]\(\s*<?([^)>\s]+(?: [^)>"\s]+)*)>?(?:\s+"[^"]*")?\s*\)/g, (_, alt, src) => { out.push({ src, alt: alt.replace(/\|.*$/, '').trim() }); return ''; });
+  return out;
+}
+
+/* ───────── outline → tree ───────── */
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'link'; } };
+function tidy(raw) {
+  let url = null;
+  const text = raw
+    .replace(/^\[[ xX]\]\s+/, '')
+    .replace(/!\[\[[^\]]*\]\]/g, '')
+    .replace(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, u) => { url = url || u; return /^https?:\/\//.test(label) ? host(u) : label; })
+    .replace(/(^|\s)(https?:\/\/\S+)/g, (_, p, u) => { url = url || u; return p + host(u); })
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[\s(])[*_]([^*_\s][^*_]*)[*_](?=$|[\s).,;:!?])/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ').trim();
+  return { text, url };
+}
+function inline(n) {
+  const r = tidy(n.raw); n.ipics = pics(n.raw); n.url = r.url;
+  const p = n.ipics[0];             // a stop that is only a picture is named after it
+  n.text = r.text || (p ? p.alt || (/^(?:img|data):/.test(p.src) ? 'Picture' : p.src.replace(/[?#].*$/, '').replace(/^.*\//, '').replace(/\.[^.]+$/, '')) : '') || '·';
+}
+function parse(src, title) {
+  const mk = (raw, kind, parent) => { const n = { raw, kind, kids: [], parent }; inline(n); parent.kids.push(n); return n; };
+  const top = { raw: title || 'Outline', text: title || 'Outline', kind: 'head', kids: [], parent: null, url: null };
+  const whole = src.replace(/\r/g, ''), body = whole.replace(/^\uFEFF?---\n[\s\S]*?\n---[ \t]*(\n|$)/, '');
+  const off = whole.slice(0, whole.length - body.length).split('\n').length - 1;   // lines of front matter skipped
+  const lines = body.replace(/&#x20;|&nbsp;/g, ' ').split('\n')
+    .map(l => l.replace(/\\\s*$/, '').replace(/\t/g, '    '));
+  const cls = [];
+  for (let li = 0; li < lines.length; li++) {
+    const l = lines[li], t = l.trim(); if (!t) continue; let m;
+    if (/^!\[/.test(t) && !t.replace(EMBEDS, '').trim()) { const ps = pics(t); if (ps.length) cls.push({ t: 'i', pics: ps }); continue; }   // picture line
+    if ((m = t.match(/^>\s?(.*)$/)) || (m = t.match(/^notes?:\s+(.+)$/i))) cls.push({ t: 'n', text: m[1].replace(/^\[![^\]]*\][-+]?\s*/, '') });   // speaker note
+    else if ((m = t.match(/^(#{1,6})\s+(.+?)\s*#*$/))) cls.push({ t: 'h', level: m[1].length, text: m[2] });
+    else if ((m = t.match(/^(?:\*\*|__)(.+?)(?:\*\*|__):?$/)) && !/\*\*|__/.test(m[1])) cls.push({ t: 'b', text: m[1] });
+    else if ((m = l.match(/^(\s*)(?:[-*+•]|\d+[.)])\s+(.*\S)\s*$/))) cls.push({ t: 'li', indent: m[1].length, text: m[2] });
+    else cls.push({ t: 'p', indent: l.length - l.trimStart().length, text: t });
+    cls.at(-1).line = li + off;
+  }
+  if (!cls.some(c => c.t === 'li') && cls.some(c => c.t === 'p' && c.indent > 0)) cls.forEach(c => { if (c.t === 'p') c.t = 'li'; });
+  const titleBold = cls.length > 1 && cls[0].t === 'b' && cls[1].t !== 'li' && cls[1].t !== 'p';
+  const heads = []; let lis = [], last = null, curH = 0;
+  cls.forEach((c, i) => {
+    if (c.t === 'n') { const o = last || top; (o.notes ||= []).push(c.text); return; }
+    if (c.t === 'i') { const o = last || top; (o.apics ||= []).push(...c.pics); return; }
+    if (c.t === 'h' || c.t === 'b') {
+      const level = c.t === 'h' ? c.level : curH ? curH + 1 : titleBold ? (i === 0 ? 1 : 2) : 1;
+      if (c.t === 'h') curH = c.level;
+      while (heads.length && heads.at(-1).level >= level) heads.pop();
+      last = mk(c.text, 'head', heads.at(-1)?.node || top); last.line = c.line; heads.push({ level, node: last }); lis = []; return;
+    }
+    if (c.t === 'p' && lis.length && last && c.indent > lis.at(-1).indent) { last.raw += ' ' + c.text; inline(last); last.line = c.line; return; }
+    const indent = c.t === 'p' ? 0 : c.indent;
+    while (lis.length && lis.at(-1).indent >= indent) lis.pop();
+    last = mk(c.text, 'point', lis.at(-1)?.node || heads.at(-1)?.node || top); last.line = c.line; lis.push({ indent, node: last });
+  });
+  if (!top.kids.length) throw new Error('Nothing to chart yet. Add a heading or a bullet.');
+  const root = top.kids.length === 1 && top.kids[0].kids.length ? top.kids[0] : top;
+  root.parent = null;
+  if (root !== top && top.notes) root.notes = [...top.notes, ...(root.notes || [])];
+  if (root !== top && top.apics) root.apics = [...top.apics, ...(root.apics || [])];
+  root.top0 = off;
+  return root;
+}
+
+/* ───────── front matter: an outline can say how it wants to look, and define palettes of its own ─────────
+   ---
+   waypoint-theme: grid
+   waypoint-palette: dusk
+   waypoint-mode: light              dark, light or auto
+   waypoint-lean: off
+   waypoint-palettes:
+     dusk:
+       dark: { ground: "#1b1020", ink: "#fff4e6", accent: "#ff6b35", highlight: "#ffd166" }
+       light: { ground: "#fff8f0", ink: "#2a1420", accent: "#c2410c", highlight: "#8a5a00" }
+   ---
+   A palette may give one mode only; the other is then worked out from it. */
+const FRONT = new RegExp('^' + String.fromCharCode(0xFEFF) + '?---\\n([\\s\\S]*?)\\n---[ \\t]*(?:\\n|$)');
+function flowMap(s) {               // { a: 1, b: { c: "2" } } written on one line
+  let i = 0;
+  const gap = () => { while (s[i] === ' ') i++; };
+  const word = ends => { gap(); let out = ''; const q = s[i]; if (q === '"' || q === "'") { i++; while (i < s.length && s[i] !== q) out += s[i++]; i++; gap(); return out; } while (i < s.length && !ends.includes(s[i])) out += s[i++]; return out.trim(); };
+  const map = () => { const o = {}; i++; while (i < s.length) { gap(); if (s[i] === '}') break; const k = word(':').toLowerCase(); i++; gap(); o[k] = s[i] === '{' ? map() : word(',}'); gap(); if (s[i] === ',') i++; } i++; return o; };
+  gap(); return s[i] === '{' ? map() : {};
+}
+function yamlMap(text) {            // the part of YAML that settings need: maps nested by indent, one-line maps, plain and quoted values
+  const top = {}, stack = [{ ind: -1, o: top }], colour = /^#[0-9a-f]{3,8}\b/i;
+  for (const raw of text.split('\n')) {
+    const m = raw.match(/^(\s*)("[^"]*"|'[^']*'|[^\s#:"'][^:]*?)\s*:(?:\s+(.*))?$/); if (!m) continue;
+    const ind = m[1].length, key = m[2].replace(/^["']|["']$/g, '').trim().toLowerCase(); let v = (m[3] || '').trim();
+    if (colour.test(v)) v = v.match(/^#[0-9a-f]+/i)[0];                 // a bare #1b1020 is read as the colour it plainly is, not as a comment
+    else if (v && !/^["'{]/.test(v)) v = v.replace(/\s+#.*$/, '');      // a trailing comment
+    else if (v[0] === '#') v = '';
+    while (stack.length > 1 && stack.at(-1).ind >= ind) stack.pop();
+    const into = stack.at(-1).o;
+    if (!v) { const o = {}; into[key] = o; stack.push({ ind, o }); }
+    else into[key] = v[0] === '{' ? flowMap(v) : v.replace(/^(["'])(.*)\1$/, '$2');
+  }
+  return top;
+}
+function readFront(src) {           // → { set, palettes }: what the outline's waypoint- keys ask for
+  const m = src.replace(/\r/g, '').match(FRONT), y = m ? yamlMap(m[1]) : {}, w = { ...(y.waypoint && typeof y.waypoint === 'object' ? y.waypoint : null) };
+  for (const k in y) if (k.startsWith('waypoint-')) w[k.slice(9)] = y[k];
+  const set = {}, palettes = {}, word = v => typeof v === 'string' ? v.trim().toLowerCase() : '';
+  if (THEMES[word(w.theme)]) set.theme = word(w.theme);
+  if (word(w.palette)) set.palette = word(w.palette);
+  if (/^(?:dark|light|auto)$/.test(word(w.mode))) set.mode = word(w.mode);
+  if (/^(?:on|off|true|false|yes|no)$/.test(word(w.lean))) set.lean = /^(?:on|true|yes)$/.test(word(w.lean));
+  if (w.palettes && typeof w.palettes === 'object') for (const id in w.palettes) { const p = norm(w.palettes[id], id); if (p) palettes[id] = p; }
+  return { set, palettes };
+}
+function writeFront(src, set, palettes) {   // the same outline with its waypoint- keys replaced; the rest of the front matter stays as written
+  const bom = src.charCodeAt(0) === 0xFEFF ? src[0] : '', body = src.slice(bom.length), nl = body.includes('\r\n') ? '\r\n' : '\n', lines = body.split(/\r?\n/);
+  const yk = s => /^[a-z0-9][a-z0-9 _-]*$/i.test(s) ? s : JSON.stringify(s), q = c => `"${c}"`;
+  const one = s => `{ ground: ${q(s.ground)}, ink: ${q(s.ink)}, accent: ${q(s.accent)}, highlight: ${q(s.highlight)}${s.surface ? `, surface: ${q(s.surface)}` : ''} }`;
+  const mine = [`waypoint-theme: ${set.theme}`]; if (set.palette) mine.push(`waypoint-palette: ${yk(set.palette)}`);
+  mine.push(`waypoint-mode: ${set.mode}`); if (set.lean === false) mine.push('waypoint-lean: off');
+  const ids = Object.keys(palettes);
+  if (ids.length) { mine.push('waypoint-palettes:'); for (const id of ids) mine.push(`  ${yk(id)}:`, `    name: ${JSON.stringify(palettes[id].name)}`, `    dark: ${one(palettes[id].dark)}`, `    light: ${one(palettes[id].light)}`); }
+  let end = -1; if (lines[0] === '---') for (let i = 1; i < lines.length; i++) if (/^---[ \t]*$/.test(lines[i])) { end = i; break; }
+  if (end < 0) return bom + ['---', ...mine, '---', '', ...lines].join(nl);
+  const kept = []; let mineNow = false;
+  for (const l of lines.slice(1, end)) {
+    if (/^waypoint(?:-[a-z]+)?\s*:/i.test(l)) { mineNow = true; continue; }
+    if (mineNow && (/^[ \t]+\S/.test(l) || !l.trim())) continue;
+    mineNow = false; kept.push(l);
+  }
+  return bom + ['---', ...kept, ...mine, ...lines.slice(end)].join(nl);
+}
+
+/* ───────── layout: every node gets a place and a scale in one world ───────── */
+const mctx = document.createElement('canvas').getContext('2d');
+const isHead = n => n.kind === 'head' || n.d <= 1;
+const fontOf = n => TH.font(n), textX = n => TH.textX(n), markR = n => TH.markR(n);   // lettering, where the text starts, how big the mark is: the theme decides
+
+function wrap(text, font, maxW) {
+  mctx.font = font;
+  const words = text.split(' '), ws = words.map(w => mctx.measureText(w).width), sp = mctx.measureText(' ').width;
+  const run = limit => {
+    const out = []; let cur = [], w = 0;
+    words.forEach((word, i) => {
+      if (cur.length && w + sp + ws[i] > limit) { out.push({ s: cur.join(' '), w }); cur = [word]; w = ws[i]; }
+      else { w = cur.length ? w + sp + ws[i] : ws[i]; cur.push(word); }
+    });
+    if (cur.length) out.push({ s: cur.join(' '), w });
+    return out;
+  };
+  let lines = run(maxW);
+  if (lines.length > 1) {            // balance: narrowest measure that keeps the same line count
+    let lo = Math.max(...ws), hi = maxW; const n = lines.length;
+    for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2; if (run(mid).length <= n) hi = mid; else lo = mid; }
+    lines = run(hi);
+  }
+  return lines;
+}
+function measure(n) {
+  const f = fontOf(n), len = n.text.length, head = isHead(n);
+  const maxEm = head ? TH.headEm(n, len) : len <= 32 ? 60 : len <= 70 ? 17 : len <= 130 ? 23 : 28;
+  n.lh = head ? 1.12 : 1.32;
+  n.lines = wrap(head && TH.headText ? TH.headText(n.text) : n.text, `${f.wt} 100px ${f.fam}`, maxEm * 100);
+  const tw = Math.max(...n.lines.map(l => l.w)) / 100, tx = textX(n), r = markR(n);
+  n.tb = { x0: tx, x1: tx + tw, y0: -n.lh / 2, y1: -n.lh / 2 + n.lines.length * n.lh };
+  let px1 = n.tb.x1, py1 = n.tb.y1; n.ims = null;
+  if (n.pics.length) {              // pictures hang under the text at the stop's own scale; a stop with nothing below it gets the big plate
+    const lone = !n.kids.length, gap = 0.4, ps = n.pics.map(p => pic(p.src)), none = ps.every(p => p.bad);
+    const ars = ps.map(p => none ? 5 : p.ar), sum = ars.reduce((a, b) => a + b, 0), maxW = (lone ? 16 : 9) * (ps.length > 1 ? 1.5 : 1) - gap * (ps.length - 1);
+    const h = Math.min(none ? 1.7 : lone ? 9 : 5, maxW / sum), y = n.tb.y1 + 0.3; let x = tx;
+    n.ims = ps.map((p, i) => { const m = { p, x, y, w: h * ars[i], h }; x += m.w + gap; p.used = true; return m; });
+    px1 = Math.max(px1, x - gap); py1 = y + h;
+  }
+  n.cx1 = px1;
+  n.box = { x0: -r - 0.1, x1: px1, y0: Math.min(n.tb.y0, -r - 0.1), y1: Math.max(py1, r + 0.1) };
+  n.bb = { ...n.box };
+}
+const grow = (bb, x0, y0, x1, y1) => { bb.x0 = Math.min(bb.x0, x0); bb.y0 = Math.min(bb.y0, y0); bb.x1 = Math.max(bb.x1, x1); bb.y1 = Math.max(bb.y1, y1); };
+
+function partition(w, r, gap) {     // contiguous rows, minimising the widest row
+  const N = w.length, pre = [0]; w.forEach(v => pre.push(pre.at(-1) + v));
+  const width = (a, b) => pre[b] - pre[a] + gap * (b - a - 1);
+  const cost = Array.from({ length: r + 1 }, () => Array(N + 1).fill(Infinity)), cut = cost.map(row => row.map(() => 0));
+  cost[0][0] = 0;
+  for (let j = 1; j <= r; j++) for (let i = j; i <= N; i++) for (let p = j - 1; p < i; p++) {
+    const c = Math.max(cost[j - 1][p], width(p, i)); if (c < cost[j][i]) { cost[j][i] = c; cut[j][i] = p; }
+  }
+  const rows = []; let i = N; for (let j = r; j > 0; j--) { const p = cut[j][i]; rows.unshift([p, i]); i = p; }
+  return rows.map(([a, b]) => ({ a, b, w: width(a, b) }));
+}
+
+const wbox = (n, b) => ({ x0: n.wx + b.x0 * n.ws, y0: n.wy + b.y0 * n.ws, x1: n.wx + b.x1 * n.ws, y1: n.wy + b.y1 * n.ws });
+/* ───────── state ───────── */
+const stage = $('#stage'), ctx = stage.getContext('2d'), mini = $('#mini'), mx = mini.getContext('2d');
+let vw = 1, vh = 1, dpr = 1, bgTile = null;
+let root, nodes = [], legs = [], source = BASE, docTitle = null, focus = null, hover = null, finding = false;
+let pv = null, pvIn = null, clock0 = null, armed = false;   // speaker notes window, its in-page stand-in, timer
+let closeup = null, follow = null;  // the picture being shown full screen · the file whose saves redraw the chart
+let lMin = -5, lMax = 12, miniMap = null, WB = null;
+const cam = { x: 0, y: 0, l: 0, vx: 0, vy: 0, vl: 0 }, tgt = { x: 0, y: 0, l: 0 };
+let flight = null, fling = null, drag = null, roamT = 0, roamAmt = 0, ripple = null, lastT = performance.now();
+const bg = { x: 0, y: 0, l: 0, px: 0, py: 0, pl: 0 };
+const tilt = { p: 0, vp: 0 }; let sp = 0, cp = 1, lean = 0, PF = 1000, leanOn = true;   // for a theme that leans: how far the floor tips back
+const DUST = 460, dust = Array.from({ length: DUST }, (_, i) => {
+  const r = k => { const v = Math.sin((i + 1) * k) * 43758.5453; return v - Math.floor(v); };
+  return { u: r(12.9898), v: r(78.233), ph: r(37.719), mag: r(4.1414) ** 2.2, sx: NaN, sy: NaN };
+});
+
+function build(src, title) {
+  const tree = parse(src, title);
+  syncFront(src); applyLook(true);   // the outline's own settings come first: they decide how it is measured
+  const all = [];
+  (function walk(n, d, sec) { n.d = d; n.i = all.length; n.sec = sec; all.push(n); n.kids.forEach((c, j) => walk(c, d + 1, d === 0 ? j : sec)); n.size = all.length - n.i; })(tree, 0, -1);
+  all.forEach(n => { n.dim = 1; n.dimT = 1; n.dimAt = 0; n.visited = false; n.pics = [...(n.ipics || []), ...(n.apics || [])]; });
+  root = tree; nodes = all; source = src; docTitle = title || null; hover = null; builtAt = performance.now();
+  arrange();
+  document.title = root.text + ' · Waypoint';
+  buildSegs();
+}
+let laidFor = 1;
+function arrange() {                // lay the chart out for the current window shape; safe to run again after a big resize
+  laidFor = clamp(vw / vh, 0.5, 2.4);
+  legs = []; TH.arrange(root, laidFor);
+  refit();
+}
+function reflow() {                 // a picture arrived and changed size: lay out again without losing the camera's place
+  const n = focus, ox = n.wx, oy = n.wy;
+  arrange();
+  const dx = n.wx - ox, dy = n.wy - oy;
+  cam.x += dx; cam.y += dy; tgt.x += dx; tgt.y += dy; flight = null;
+  if (!roamT) flyTo(home(), performance.now() - builtAt < 900); else bound(tgt);
+}
+function refit() {                  // everything that depends on the window size but not on the layout
+  const wb = WB = wbox(root, root.bb), mw = mini.clientWidth || 216, mh = mini.clientHeight || 136, pad = 12;
+  const s = Math.min((mw - 2 * pad) / (wb.x1 - wb.x0), (mh - 2 * pad) / (wb.y1 - wb.y0));
+  miniMap = { s, ox: (mw - (wb.x1 - wb.x0) * s) / 2 - wb.x0 * s, oy: (mh - (wb.y1 - wb.y0) * s) / 2 - wb.y0 * s, w: mw, h: mh };
+  lMin = viewOf(root).l - 1.1;
+  lMax = Math.log(vh * 0.55 / Math.min(...nodes.map(n => n.ws)));
+}
+
+/* ───────── camera ───────── */
+const chain = n => { const a = []; while (n) { a.unshift(n); n = n.parent; } return a; };
+function viewOf(n) {
+  const padT = finding ? 152 : 74, padB = 84, padX = Math.max(40, vw * 0.07);
+  const padL = padX + (TH.padLeft ? TH.padLeft(n) : 0) + (editing && vw > 720 ? sheet.offsetWidth : 0), aw = vw - padL - padX, ah = vh - padT - padB;   // beside an open editor
+  let f;
+  if (n === root) f = wbox(n, n.bb);
+  else { f = wbox(n, n.box); n.kids.forEach(c => { const b = wbox(c, c.box); grow(f, b.x0, b.y0, b.x1, b.y1); }); TH.frame?.(n, f); }
+  const fw = f.x1 - f.x0, fh = f.y1 - f.y0;
+  let z = Math.min(aw / fw, ah / fh);
+  if (n !== root) {
+    if (!n.kids.length) z = n.ims ? Math.min(z, 0.94 * aw / fw, 0.92 * ah / fh) : Math.min(z, 0.74 * aw / fw, 0.5 * ah / fh);
+    z = Math.min(z, vh * (n.kids.length ? 0.078 : 0.1) / n.ws);
+  }
+  return { x: (f.x0 + f.x1) / 2 - (padL - padX) / 2 / z, y: (f.y0 + f.y1) / 2 - (padT - padB) / 2 / z, l: Math.log(z) };
+}
+function picView(n, m) {            // one picture, edge to edge
+  const w = m.w * n.ws, h = m.h * n.ws;
+  return { x: n.wx + m.x * n.ws + w / 2, y: n.wy + m.y * n.ws + h / 2, l: Math.log(Math.min((vw - 40) / w, (vh - 40) / h)) };
+}
+const home = () => closeup && closeup.n.ims?.[closeup.i] ? picView(closeup.n, closeup.n.ims[closeup.i]) : viewOf(focus);
+function lookAt(n, i) { closeup = { n, i }; document.body.classList.add('closeup'); roamT = 0; flyTo(home()); }
+function zoomPic() {                // Z: the stop's pictures one after another, then back to the stop
+  const ims = focus.ims || []; let i = closeup ? closeup.i + 1 : 0; while (ims[i] && !ims[i].p.ok) i++;
+  if (ims[i]) lookAt(focus, i); else if (closeup) travel(focus); else toast('This stop has no picture to show.');
+}
+function zoomPath(a, b) {           // van Wijk & Nuij: the smooth zoom-and-pan curve between two views
+  const rho = 1.3, r2 = rho * rho, r4 = r2 * r2, dx = b.x - a.x, dy = b.y - a.y, d1 = Math.hypot(dx, dy);
+  if (d1 < 1e-6 * a.w) { const S = Math.log(b.w / a.w) / rho; return { S: Math.abs(S), at: t => ({ x: a.x + t * dx, y: a.y + t * dy, w: a.w * Math.exp(rho * t * S) }) }; }
+  const b0 = (b.w * b.w - a.w * a.w + r4 * d1 * d1) / (2 * a.w * r2 * d1), b1 = (b.w * b.w - a.w * a.w - r4 * d1 * d1) / (2 * b.w * r2 * d1);
+  const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0), r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1), S = (r1 - r0) / rho, c0 = Math.cosh(r0), s0 = Math.sinh(r0);
+  return { S: Math.abs(S), at: t => { const s = t * S, u = a.w / (r2 * d1) * (c0 * Math.tanh(rho * s + r0) - s0); return { x: a.x + u * dx, y: a.y + u * dy, w: a.w * c0 / Math.cosh(rho * s + r0) }; } };
+}
+function flyTo(v, instant) {
+  fling = null;
+  if (instant || reduced.matches) { Object.assign(tgt, v); Object.assign(cam, v, { vx: 0, vy: 0, vl: 0 }); flight = null; return 0; }
+  const path = zoomPath({ x: cam.x, y: cam.y, w: vw / Math.exp(cam.l) }, { x: v.x, y: v.y, w: vw / Math.exp(v.l) });
+  const dur = clamp(260 + path.S * 600, 480, 1900);
+  flight = { path, t0: performance.now(), dur, end: v };
+  return dur;
+}
+const ease = t => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+function spring(pos, vel, target, dt, o = cam, om = 15) { // exact critically damped step
+  const x = o[pos] - target, v = o[vel], e = Math.exp(-om * dt), k = (v + om * x) * dt;
+  o[pos] = target + (x + k) * e; o[vel] = (v - om * k) * e;
+}
+function wander() { flight = null; fling = null; roamT = 1; }
+function bound(o) { o.x = clamp(o.x, WB.x0, WB.x1); o.y = clamp(o.y, WB.y0, WB.y1); }
+function zoomAbout(px, py, d) {
+  const Z0 = Math.exp(tgt.l), l = clamp(tgt.l + d, lMin, lMax), Z1 = Math.exp(l);
+  const wx = tgt.x + (px - vw / 2) / Z0, wy = tgt.y + (py - vh / 2) / Z0;
+  tgt.l = l; tgt.x = wx - (px - vw / 2) / Z1; tgt.y = wy - (py - vh / 2) / Z1; bound(tgt);
+}
+
+/* ───────── travel ───────── */
+function setDims(now) {
+  const anc = new Set(chain(focus));
+  nodes.forEach(n => {
+    let m, at = now;
+    if (focus === root || n === focus) m = 1;
+    else if (n.parent === focus) { m = 0.94; at = now + 260 + focus.kids.indexOf(n) * 70; }
+    else if (anc.has(n)) m = 0.3;
+    else if (n.parent === focus.parent) m = 0.32;
+    else if (n.i > focus.i && n.i < focus.i + focus.size) m = 0.7;
+    else m = 0.2;
+    n.dimT = m; n.dimAt = at;
+  });
+}
+function travel(n, instant, peek) {  // peek: look without leaving a trail (used by Find)
+  if (!n) return;
+  closeup = null; document.body.classList.remove('closeup');
+  focus = n; if (!peek) n.visited = true; roamT = 0;
+  if (!peek && !instant && armed && clock0 == null) clock0 = Date.now();
+  const now = performance.now(), dur = flyTo(viewOf(n), instant);
+  setDims(instant ? now - 1e4 : now + dur * 0.35);
+  ripple = { n, t0: now + dur * 0.82 };
+  if (n !== root) $('#hint').classList.add('gone');
+  hud(); if (!peek) save();
+  if (editing && !caretDriven) placeCaret(n);   // travelling moves the editor's caret to that stop's line
+}
+const next = () => travel(nodes[focus.i + 1] || root), prev = () => travel(nodes[focus.i - 1]), up = () => travel(closeup ? focus : focus.parent || root);
+
+/* ───────── drawing ───────── */
+function resize() {
+  vw = Math.max(2, innerWidth); vh = Math.max(2, innerHeight); dpr = Math.min(devicePixelRatio || 1, 2); PF = Math.max(vw, vh) * 1.15;
+  stage.width = Math.round(vw * dpr); stage.height = Math.round(vh * dpr);
+  const mw = mini.clientWidth, mh = mini.clientHeight; mini.width = Math.round(mw * dpr); mini.height = Math.round(mh * dpr);
+  TH?.resize?.();
+}
+/* for a theme that leans: the chart is a floor that tips back in flight. Lines follow the lean; words, marks and pictures move with it but stay facing you */
+const flr = (X, Y) => { const k = PF / (PF - Y * sp); return [vw / 2 + X * k, vh / 2 + Y * cp * k, k]; };   // pixels from the centre, flat → where that lands
+const spot = (wx, wy) => flr((wx - cam.x) * camZ, (wy - cam.y) * camZ);
+function drawPics(n, sx, sy, fpx, rel) {   // pictures are landmarks: they stay recognisable from further out than text does
+  for (const m of n.ims) {
+    const w = m.w * fpx, h = m.h * fpx, x = sx + m.x * fpx, y = sy + m.y * fpx;
+    if (h < 5 || x > vw || y > vh || x + w < 0 || y + h < 0) continue;
+    const a = sstep(5, 15, h) * (1 - sstep(vh * 1.7, vh * 2.8, h)) * (n === hover ? 1 : 0.1 + 0.9 * rel);
+    if (a < 0.02) continue;
+    if (m.p.ok) {
+      ctx.globalAlpha = a;
+      if (!m.p.opaque) { ctx.fillStyle = PAPER; ctx.fillRect(x, y, w, h); }   // line art made for a white page keeps its page
+      ctx.drawImage(m.p.img, x, y, w, h); ctx.globalAlpha = 1;
+      if (h > 46) { const o = Math.min(5, h * 0.02); ctx.strokeStyle = ink(0.5 * a); ctx.lineWidth = 1; ctx.strokeRect(x - o, y - o, w + 2 * o, h + 2 * o); }
+    } else {
+      ctx.strokeStyle = ink(0.6 * a); ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+      const fs = Math.min(0.5 * fpx, h * 0.3);
+      if (m.p.bad && fs >= 7) { ctx.font = `400 ${fs}px ${TEXT}`; ctx.fillStyle = ink(0.75 * a); ctx.fillText(m.p.label, x + fs, y + h / 2, w - 2 * fs); }
+    }
+  }
+}
+let camZ = 1, dimK = 1, miniOff = null;
+function drawNode(n, now) {
+  const Z = camZ, ws = n.ws, far = 60 + lean * vh * 0.6; let fpx = ws * Z;
+  const bx0 = (n.wx + n.bb.x0 * ws - cam.x) * Z + vw / 2, bx1 = (n.wx + n.bb.x1 * ws - cam.x) * Z + vw / 2;
+  const by0 = (n.wy + n.bb.y0 * ws - cam.y) * Z + vh / 2, by1 = (n.wy + n.bb.y1 * ws - cam.y) * Z + vh / 2;
+  if (now >= n.dimAt) n.dim += (n.dimT - n.dim) * dimK;
+  if (bx1 < -far || bx0 > vw + far || by1 < -far || by0 > vh + far) return;
+  const rel = n.dim + (1 - n.dim) * roamAmt * 0.85;
+  let sx = (n.wx - cam.x) * Z + vw / 2, sy = (n.wy - cam.y) * Z + vh / 2;
+  if (sp) { const k = PF / (PF - (sy - vh / 2) * sp); sx = vw / 2 + (sx - vw / 2) * k; sy = vh / 2 + (sy - vh / 2) * cp * k; fpx *= k; }
+  if (fpx < 0.9) { ctx.fillStyle = ink(0.4 * rel); ctx.fillRect(sx, sy, 1, 1); return; }
+  TH.before?.(n, sx, sy, fpx, rel);
+  let a = sstep(5, 10.5, fpx) * lerp(1, 0.3, sstep(vh * 0.18, vh * 0.5, fpx)) * (1 - sstep(vh, vh * 1.5, fpx)) * rel;
+  if (n === hover) a = Math.max(a, 0.96);
+  if (n.hit) a = Math.max(a, 0.92 * sstep(5, 10.5, fpx) * (1 - sstep(vh, vh * 1.5, fpx)));
+  TH.mark(n, sx, sy, fpx, a, rel, now);
+  if (a > 0.015) {
+    const f = fontOf(n); ctx.font = `${f.wt} ${fpx}px ${f.fam}`; ctx.fillStyle = TH.hoverInk && n === hover && n !== focus ? hi(a) : ink(a);
+    const x = sx + n.tb.x0 * fpx;
+    for (let i = 0; i < n.lines.length; i++) {
+      const y = sy + i * n.lh * fpx; if (y < -fpx || y > vh + fpx) continue;
+      ctx.fillText(n.lines[i].s, x, y);
+    }
+    if (!TH.hoverInk && n === hover && n !== focus) { ctx.fillRect(x, sy + ((n.lines.length - 1) * n.lh + 0.62) * fpx, n.lines.at(-1).w / 100 * fpx, Math.max(1, 0.05 * fpx)); }
+  }
+  if (n.ims) drawPics(n, sx, sy, fpx, rel);
+  for (const c of n.kids) drawNode(c, now);
+}
+function drawMini() {
+  const m = miniMap; if (!m) return;
+  mx.setTransform(dpr, 0, 0, dpr, 0, 0); mx.clearRect(0, 0, m.w, m.h);
+  const X = x => m.ox + x * m.s, Y = y => m.oy + y * m.s;
+  mx.lineWidth = 1; mx.strokeStyle = ink(0.4); mx.beginPath(); mx.moveTo(X(root.wx), Y(root.wy));
+  root.kids.forEach(c => mx.lineTo(X(c.wx), Y(c.wy))); mx.stroke();
+  for (const n of nodes) {
+    if (n.hit && n !== focus) { mx.strokeStyle = hi(0.9); mx.beginPath(); mx.arc(X(n.wx), Y(n.wy), 4.5, 0, 7); mx.stroke(); }
+    if (n.d > 3) continue;
+    mx.fillStyle = n === focus ? TH.miniHere() : ink(n.visited ? 1 : n.d <= 1 ? 0.7 : 0.4);
+    mx.beginPath(); mx.arc(X(n.wx), Y(n.wy), n === focus ? 3.4 : n.d <= 1 ? 2.5 : n.d === 2 ? 1.1 : 0.7, 0, 7); mx.fill();
+  }
+  const hw = vw / 2 / camZ, hh = vh / 2 / camZ;
+  const x0 = clamp(X(cam.x - hw), 1, m.w - 1), x1 = clamp(X(cam.x + hw), 1, m.w - 1), y0 = clamp(Y(cam.y - hh), 1, m.h - 1), y1 = clamp(Y(cam.y + hh), 1, m.h - 1);
+  mx.strokeStyle = ink(0.95); mx.lineWidth = 1;
+  if (x1 - x0 < 7 && y1 - y0 < 7) { const cx = clamp(X(cam.x), 4, m.w - 4), cy = clamp(Y(cam.y), 4, m.h - 4); mx.beginPath(); mx.arc(cx, cy, 6, 0, 7); mx.moveTo(cx - 10, cy); mx.lineTo(cx + 10, cy); mx.moveTo(cx, cy - 10); mx.lineTo(cx, cy + 10); mx.stroke(); }
+  else mx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0), Math.round(y1 - y0));
+}
+function frame(now) {
+  const dt = Math.min(0.2, (now - lastT) / 1000); lastT = now;
+  if (flight) {
+    const t = Math.min(1, (now - flight.t0) / flight.dur), p = flight.path.at(ease(t));
+    tgt.x = p.x; tgt.y = p.y; tgt.l = Math.log(vw / p.w);
+    if (t >= 1) { Object.assign(tgt, flight.end); flight = null; }
+  }
+  if (fling) {
+    cam.x += fling.vx * dt; cam.y += fling.vy * dt; bound(cam); tgt.x = cam.x; tgt.y = cam.y; cam.vx = cam.vy = 0;
+    const d = Math.exp(-4.2 * dt); fling.vx *= d; fling.vy *= d;
+    if (Math.hypot(fling.vx, fling.vy) * Math.exp(cam.l) < 6) fling = null;
+    spring('l', 'vl', tgt.l, dt);
+  } else if (!drag?.moved) { spring('x', 'vx', tgt.x, dt); spring('y', 'vy', tgt.y, dt); spring('l', 'vl', tgt.l, dt); }
+  else spring('l', 'vl', tgt.l, dt);
+  roamAmt += (roamT - roamAmt) * (1 - Math.exp(-dt * 6)); dimK = 1 - Math.exp(-dt * 7);
+  camZ = Math.exp(cam.l);
+  // where the theme leans: the floor tips back a little with the camera's speed during a flight, and is flat again when it lands
+  const want = TH.lean && leanOn && flight && !reduced.matches ? clamp(Math.abs(cam.vl) * 0.2 + Math.hypot(cam.vx, cam.vy) * camZ / vw * 0.14, 0, 0.3) : 0;
+  if (TH.lean) spring('p', 'vp', want, dt, tilt, 5.5); else tilt.p = tilt.vp = 0;
+  if (Math.abs(tilt.p) < 1e-4 && !want) { sp = 0; cp = 1; lean = 0; } else { sp = Math.sin(Math.abs(tilt.p)); cp = Math.cos(tilt.p); lean = Math.min(1, Math.abs(tilt.p)); }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  TH.ground(now);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  TH.route(now);
+  drawNode(root, now);
+  TH.over(now);
+  const wb = wbox(root, root.bb), hw = vw / 2 / camZ, hh = vh / 2 / camZ;
+  const seen = Math.max(0, Math.min(wb.x1, cam.x + hw) - Math.max(wb.x0, cam.x - hw)) * Math.max(0, Math.min(wb.y1, cam.y + hh) - Math.max(wb.y0, cam.y - hh)) / ((wb.x1 - wb.x0) * (wb.y1 - wb.y0));
+  const whole = seen > 0.9;
+  if (whole !== miniOff) { miniOff = whole; mini.classList.toggle('off', whole); }
+  if (!whole) drawMini();
+  requestAnimationFrame(frame);
+}
+
+/* ═══════════════════════════ THEME: chart ═══════════════════════════
+   A star chart. Waypoints run in rows, their points fan out on arcs to the right, and a dotted hop joins each waypoint
+   to the next. A hop is inked in with the accent once it has been flown. */
+const K_SECTION = 0.6, K_CHILD = 0.33;
+function layoutFan(n) {             // children sit in reading order on an arc to the right of their parent
+  measure(n); n.arc = null; n.kids.forEach(layoutFan);
+  if (!n.kids.length) return;
+  const k = K_CHILD, gap = 0.72 * k;
+  const hs = n.kids.map(c => (c.bb.y1 - c.bb.y0) * k);
+  const H = hs.reduce((a, b) => a + b, 0) + gap * (n.kids.length - 1);
+  const yc = (n.tb.y0 + n.tb.y1) / 2;
+  let y = yc - H / 2;
+  n.kids.forEach((c, i) => { c.k = k; c.oy = y - c.bb.y0 * k; y += hs[i] + gap; });
+  const R = Math.max(H * 0.95, 4.2), cx = n.cx1 + 1.5 - Math.sqrt(R * R - H * H / 4);
+  n.kids.forEach(c => { c.ox = cx + Math.sqrt(R * R - (c.oy - yc) ** 2); grow(n.bb, c.ox + c.bb.x0 * k, c.oy + c.bb.y0 * k, c.ox + c.bb.x1 * k, c.oy + c.bb.y1 * k); });
+  const pad = 0.42 * k / R;
+  n.arc = { cx, yc, R, a0: Math.asin((n.kids[0].oy - yc) / R) - pad, a1: Math.asin((n.kids.at(-1).oy - yc) / R) + pad };
+}
+function layoutRoot(root, aspect) { // waypoints snake across in rows; row count chosen for the largest type at overview
+  measure(root); root.kids.forEach(layoutFan);
+  const k = K_SECTION, gx = 3.4 * k, gy = 2.5 * k, N = root.kids.length;
+  if (!N) return;
+  const it = root.kids.map(c => ({ c, w: (c.bb.x1 - c.bb.x0) * k, h: (c.bb.y1 - c.bb.y0) * k }));
+  const headW = root.box.x1 - root.box.x0, headH = root.box.y1 - root.box.y0;
+  let best = null;
+  for (let r = 1; r <= Math.min(N, 8); r++) {
+    const rows = partition(it.map(i => i.w), r, gx);
+    rows.forEach(row => { row.h = Math.max(...it.slice(row.a, row.b).map(i => i.h)) + (row.b - row.a > 1 ? 0.5 : 0); });
+    const W = Math.max(headW, ...rows.map(row => row.w)), Ht = headH + gy * 1.25 + rows.reduce((s, row) => s + row.h, 0) + gy * (r - 1);
+    const fit = Math.min(aspect / W, 1 / Ht);
+    if (!best || fit > best.fit * 1.02) best = { fit, rows, W };
+  }
+  let y = root.box.y1 + gy * 1.25;
+  best.rows.forEach((row, ri) => {
+    const rtl = ri % 2 === 1; let x = rtl ? best.W + root.box.x0 : root.box.x0;
+    for (let i = row.a; i < row.b; i++) {
+      const { c, w, h } = it[i], slack = (row.h - h) / 2;
+      const top = y + slack + ((i - row.a) % 2 ? 1 : -1) * Math.min(0.25, slack);
+      const left = rtl ? x - w : x;
+      c.k = k; c.ox = left - c.bb.x0 * k; c.oy = top - c.bb.y0 * k;
+      grow(root.bb, left, top, left + w, top + h);
+      x += rtl ? -(w + gx) : w + gx;
+    }
+    y += row.h + gy;
+  });
+}
+function place(n, wx, wy, ws, d) { n.wx = wx; n.wy = wy; n.ws = ws; n.kids.forEach(c => place(c, wx + c.ox * ws, wy + c.oy * ws, ws * c.k)); }
+const LEG_BOW = 0.34;               // how far a hop's control point sits off the straight line, as a share of its length
+function chartArrange(root, aspect) {   // waypoints in rows, points on arcs, and the hop from each waypoint to the next
+  layoutRoot(root, aspect);
+  place(root, 0, 0, 1);
+  // legs of the route: the short hops between one waypoint's cluster and the next
+  const stops = [{ n: root, b: wbox(root, root.box) }, ...root.kids.map(c => ({ n: c, b: wbox(c, c.bb) }))];
+  const midX = stops.reduce((a, t) => a + (t.b.x0 + t.b.x1) / 2, 0) / stops.length;
+  for (let i = 0; i + 1 < stops.length; i++) {
+    const A = stops[i].b, B = stops[i + 1].b, m = 0.32;
+    const p0 = { x: (A.x0 + A.x1) / 2, y: (A.y0 + A.y1) / 2 }, p1 = { x: (B.x0 + B.x1) / 2, y: (B.y0 + B.y1) / 2 };
+    const dx = p1.x - p0.x, dy = p1.y - p0.y;
+    const exit = (b, ox, oy, ddx, ddy) => Math.min(ddx ? ((ddx > 0 ? b.x1 + m : b.x0 - m) - ox) / ddx : Infinity, ddy ? ((ddy > 0 ? b.y1 + m : b.y0 - m) - oy) / ddy : Infinity);
+    const t0 = exit(A, p0.x, p0.y, dx, dy), t1 = 1 - exit(B, p1.x, p1.y, -dx, -dy);
+    if (t1 <= t0) continue;
+    const x0 = p0.x + dx * t0, y0 = p0.y + dy * t0, x1 = p0.x + dx * t1, y1 = p0.y + dy * t1, lx = x1 - x0, ly = y1 - y0;
+    // each hop bows: along a row it leans to the left of travel, so rows alternate; a turn between rows swings outward, away from the middle of the chart
+    const across = Math.abs(lx) >= Math.abs(ly), off = (x0 + x1) / 2 - midX;
+    const side = across ? 1 : Math.abs(off) > 0.5 ? Math.sign(off) * Math.sign(ly) : (i % 2 ? 1 : -1), k = (across ? LEG_BOW : LEG_BOW * 1.25) * side;
+    legs.push({ to: stops[i + 1].n, x0, y0, x1, y1, cx: (x0 + x1) / 2 + ly * k, cy: (y0 + y1) / 2 - lx * k });
+  }
+}
+function chartTile() {              // the ground: one colour, a little lighter in the middle and deeper at the edge
+  bgTile = document.createElement('canvas'); bgTile.width = Math.ceil(vw / 4); bgTile.height = Math.ceil(vh / 4);
+  const b = bgTile.getContext('2d'), w = bgTile.width, h = bgTile.height, c = (v, a) => `rgba(${v.map(Math.round).join(',')},${a})`;
+  b.fillStyle = gnd(1); b.fillRect(0, 0, w, h);
+  const g = b.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, Math.hypot(w, h) * 0.58);
+  g.addColorStop(0, DARK ? c(blend(C.ground, WHITE, 0.09), 0.55) : c(blend(C.ground, WHITE, 0.7), 0.6)); g.addColorStop(0.5, gnd(0));
+  g.addColorStop(1, DARK ? c(blend(C.ground, BLACK, 0.5), 0.62) : c(blend(C.ground, C.ink, 0.09), 0.6));
+  b.fillStyle = g; b.fillRect(0, 0, w, h);
+}
+function drawGraticule(Z) {         // world-anchored graticule; finer rulings fade in as you descend
+  const base = 5, n0 = Math.floor(Math.log(110 / Z) / Math.log(base));
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    const sp = base ** (n0 + i), px = sp * Z, a = sstep(24, 120, px) * (1 - sstep(900, 2600, px)) * 0.085;
+    if (a < 0.004) continue;
+    ctx.strokeStyle = ink(a); ctx.beginPath();
+    const x0 = Math.floor((cam.x - vw / 2 / Z) / sp) * sp, y0 = Math.floor((cam.y - vh / 2 / Z) / sp) * sp;
+    for (let x = x0; (x - cam.x) * Z + vw / 2 < vw; x += sp) { const sx = Math.round((x - cam.x) * Z + vw / 2) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, vh); }
+    for (let y = y0; (y - cam.y) * Z + vh / 2 < vh; y += sp) { const sy = Math.round((y - cam.y) * Z + vh / 2) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(vw, sy); }
+    ctx.stroke();
+  }
+}
+function drawDust(Z) {              // specks that stream past as the camera moves: the feeling of speed
+  bg.x += (cam.x - bg.px) * Z; bg.y += (cam.y - bg.py) * Z; bg.l += cam.l - bg.pl; bg.px = cam.x; bg.py = cam.y; bg.pl = cam.l;
+  const L = Math.max(vw, vh) * 3.4, cx = vw / 2, cy = vh / 2;
+  ctx.lineCap = 'round';
+  for (const p of dust) {
+    let c = p.ph + bg.l * 0.2; c -= Math.floor(c);
+    const s = 0.3 * 2 ** (c * 3.4);
+    let ux = (p.u * L - bg.x * 0.11) % L, uy = (p.v * L - bg.y * 0.11) % L; if (ux < 0) ux += L; if (uy < 0) uy += L;
+    const x = cx + (ux - L / 2) * s, y = cy + (uy - L / 2) * s, ox = p.sx, oy = p.sy; p.sx = x; p.sy = y;
+    if (x < -20 || x > vw + 20 || y < -20 || y > vh + 20) continue;
+    const a = Math.sin(Math.PI * c) ** 1.4 * (0.16 + 0.6 * p.mag), size = (0.7 + 1.5 * p.mag) * (0.55 + 0.42 * s), d = Math.hypot(x - ox, y - oy);
+    if (d > 1.5 && d < 260) { ctx.strokeStyle = ink(a * 0.85); ctx.lineWidth = size; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x, y); ctx.stroke(); }
+    else { ctx.fillStyle = ink(a); ctx.beginPath(); ctx.arc(x, y, size / 2, 0, 7); ctx.fill(); }
+  }
+}
+function drawLegs(Z, now) {         // hops between waypoints: dotted until flown, then the amber line draws itself along the curve
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const head = (x, y, tx, ty, h) => { const l = Math.hypot(tx, ty) || 1, ux = tx / l, uy = ty / l; ctx.beginPath(); ctx.moveTo(x - ux * h - uy * h * 0.5, y - uy * h + ux * h * 0.5); ctx.lineTo(x, y); ctx.lineTo(x - ux * h + uy * h * 0.5, y - uy * h - ux * h * 0.5); ctx.stroke(); };
+  for (const g of legs) {
+    const x0 = (g.x0 - cam.x) * Z + vw / 2, y0 = (g.y0 - cam.y) * Z + vh / 2, x1 = (g.x1 - cam.x) * Z + vw / 2, y1 = (g.y1 - cam.y) * Z + vh / 2, cx = (g.cx - cam.x) * Z + vw / 2, cy = (g.cy - cam.y) * Z + vh / 2;
+    const len = Math.hypot(x1 - x0, y1 - y0); if (len < 6 || len > 9000) continue;
+    const flown = g.to.visited;
+    if (flown !== g.was) {          // first flown while on screen: ink it in over the flight; restored trails are simply there
+      const live = g.was === false && flown && !reduced.matches;
+      g.t0 = live ? now + (flight ? flight.dur * 0.12 : 0) : -1e9; g.dur = live && flight ? Math.max(420, flight.dur * 0.62) : 520; g.was = flown;
+    }
+    const p = flown ? ease(clamp((now - g.t0) / g.dur, 0, 1)) : 0, q = 1 - p, h = clamp(len * 0.11, 4.5, 10);
+    const mx = q * q * x0 + 2 * q * p * cx + p * p * x1, my = q * q * y0 + 2 * q * p * cy + p * p * y1;   // the point reached so far
+    if (p < 1) {
+      ctx.strokeStyle = ink(0.5); ctx.lineWidth = 1.1; ctx.setLineDash([0.1, 5.5]);
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.quadraticCurveTo(cx + (x1 - cx) * p, cy + (y1 - cy) * p, x1, y1); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = 1; head(x1, y1, x1 - cx, y1 - cy, h);
+    }
+    if (p > 0) {
+      ctx.strokeStyle = acc(0.92); ctx.lineWidth = 1.7;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 + (cx - x0) * p, y0 + (cy - y0) * p, mx, my); ctx.stroke();
+      head(mx, my, q * (cx - x0) + p * (x1 - cx), q * (cy - y0) + p * (y1 - cy), h);
+    }
+  }
+}
+function drawArc(n, Z, rel) {
+  const A = n.arc, Rs = A.R * n.ws * Z; if (Rs < 10) return;
+  const cx = (n.wx + A.cx * n.ws - cam.x) * Z + vw / 2, cy = (n.wy + A.yc * n.ws - cam.y) * Z + vh / 2;
+  const a = sstep(10, 60, Rs) * (1 - sstep(vh * 6, vh * 14, Rs)) * (0.3 + 0.7 * rel);
+  if (a < 0.01) return;
+  ctx.lineWidth = 1; ctx.strokeStyle = ink(0.34 * a);
+  ctx.beginPath(); ctx.arc(cx, cy, Rs, A.a0, A.a1); ctx.stroke();
+  const fpx = n.ws * Z, sx = (n.wx - cam.x) * Z + vw / 2;   // stem from the end of the text to the orbit
+  ctx.beginPath(); ctx.moveTo(sx + (n.tb.x1 + 0.35) * fpx, cy); ctx.lineTo(cx + Rs - (n.kids.length % 2 ? 0.4 * K_CHILD * fpx : 0), cy); ctx.stroke();
+  let lastSeen = -1; n.kids.forEach((c, i) => { if (c.visited) lastSeen = i; });
+  if (lastSeen >= 0) {              // the stretch of orbit already flown
+    ctx.strokeStyle = acc(0.95 * a); ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(cx, cy, Rs, A.a0, Math.asin((n.kids[lastSeen].oy - A.yc) / A.R)); ctx.stroke();
+  }
+}
+function chartMark(n, sx, sy, fpx, a, rel, now) {   // far away a speck; close up a numbered ring, a rose at the origin, a dot for a point
+  const here = n === focus, r = markR(n) * fpx;
+  if (n.hit && !here) { ctx.strokeStyle = hi(0.9); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(sx, sy, Math.max(r, 1.6) + 4, 0, 7); ctx.stroke(); }
+  if (fpx < 7) {                    // far away: a speck in the constellation
+    ctx.fillStyle = here ? acc(1) : ink((n.visited ? 0.95 : 0.6) * (0.45 + 0.55 * rel));
+    ctx.beginPath(); ctx.arc(sx, sy, Math.max(0.9, (n.d <= 1 ? 0.34 : 0.22) * fpx), 0, 7); ctx.fill(); return;
+  }
+  const ma = Math.max(a, 0.1);
+  if (n.d === 1) {                  // numbered waypoint ring
+    ctx.lineWidth = Math.max(1, 0.06 * fpx);
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7);
+    if (here || n.visited) { ctx.fillStyle = here ? acc(ma) : ink(ma); ctx.fill(); } else { ctx.strokeStyle = ink(ma); ctx.stroke(); }
+    ctx.font = `500 ${0.7 * fpx}px ${DISPLAY}`; ctx.textAlign = 'center';
+    ctx.fillStyle = here || n.visited ? `rgba(${here ? ONACC : UNDER},${Math.min(1, ma * 1.4)})` : ink(ma);
+    ctx.fillText(String(n.sec + 1), sx, sy + 0.03 * fpx); ctx.textAlign = 'left';
+  } else if (n.d === 0) {           // chart rose at the origin
+    ctx.strokeStyle = ink(ma); ctx.lineWidth = Math.max(1, 0.05 * fpx); ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const t = i * Math.PI / 4, q = i % 2 ? r * 0.5 : r; ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(t) * q, sy + Math.sin(t) * q); }
+    ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7);
+    if (here) { ctx.fillStyle = acc(1); ctx.fill(); }
+    else if (n.visited) { ctx.fillStyle = ink(ma); ctx.fill(); }
+    else { ctx.strokeStyle = ink(ma); ctx.lineWidth = Math.max(1, 0.07 * fpx); ctx.stroke(); }
+  }
+  if (here && n !== root) {         // you are here
+    const pulse = reduced.matches ? 0 : Math.sin(now / 520);
+    ctx.strokeStyle = acc(0.75 - 0.2 * pulse); ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(sx, sy, r + 6 + 2.2 * pulse, 0, 7); ctx.stroke();
+  }
+}
+THEMES.chart = {
+  id: 'chart', name: 'Chart', palette: 'blueprint', soft: [0.72, 0.42, 0.3],
+  faces: ['"Futura","Futura PT","Century Gothic","Avenir Next",system-ui,sans-serif', '"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif'],
+  font: n => isHead(n) ? { fam: DISPLAY, wt: 500 } : { fam: TEXT, wt: n.kids.length ? 500 : 400 },
+  textX: n => n.d === 1 ? 1.25 : n.d === 0 ? 1.0 : 0.72,
+  markR: n => n.d === 1 ? 0.66 : n.d === 0 ? 0.5 : 0.22,
+  headEm: (n, len) => len <= 26 ? 60 : 14,
+  arrange: chartArrange, resize: chartTile,
+  ground() { ctx.drawImage(bgTile, 0, 0, vw, vh); drawGraticule(camZ); drawDust(camZ); },
+  route(now) { drawLegs(camZ, now); },
+  before(n, sx, sy, fpx, rel) { if (n.arc) drawArc(n, camZ, rel); },
+  mark: chartMark,
+  over(now) {                       // arriving sends one ring out from the stop
+    if (!ripple || now <= ripple.t0) return;
+    const t = (now - ripple.t0) / 720, n = ripple.n;
+    if (t >= 1 || reduced.matches) { ripple = null; return; }
+    const e = 1 - (1 - t) ** 3; ctx.strokeStyle = acc(0.7 * (1 - t)); ctx.lineWidth = 1.5; ctx.beginPath();
+    ctx.arc((n.wx - cam.x) * camZ + vw / 2, (n.wy - cam.y) * camZ + vh / 2, markR(n) * n.ws * camZ + 6 + e * 54, 0, 7); ctx.stroke();
+  },
+  miniHere: () => acc(1),
+};
+
+/* ═══════════════════════════ THEME: grid ═══════════════════════════
+   The same outline set as columns on a ruled floor, one world unit to a cell. Sections run in rows of whole cells with their
+   points in a column beneath; stepping stones mark the route; arriving stamps a ring and an address on the stop. */
+const GS = d => [2.2, 0.9, 0.42, 0.27][d] || Math.max(0.16, 0.27 * 0.84 ** (d - 3));   // type size in cells at each depth
+function putCol(n, x, y) {          // n's square is centred on (x, y) and its children run down the next column; returns the bottom edge
+  n.wx = x; n.wy = y; n.ws = GS(n.d);
+  let bot = y + n.box.y1 * n.ws;
+  const d = n.d + 1, sk = GS(d), step = d <= 2 ? 1 : 0.5, off = d <= 2 ? 0.5 : 0.25;   // points sit on whole cells, their own points on half cells
+  for (const c of n.kids) bot = putCol(c, x + (d <= 3 ? 1 : 0.5), Math.ceil((bot + (d <= 2 ? 0.3 : 0.12) - c.box.y0 * sk - off) / step - 1e-6) * step + off);
+  return bot;
+}
+function hull(n) {                  // the box around a stop and everything under it, in the stop's own units
+  n.bb = { ...n.box }; if (n.d === 1) grow(n.bb, -0.7, -3.1, 3.7, 0);   // room for the section's number
+  for (const c of n.kids) { const b = wbox(c, hull(c)); grow(n.bb, (b.x0 - n.wx) / n.ws, (b.y0 - n.wy) / n.ws, (b.x1 - n.wx) / n.ws, (b.y1 - n.wy) / n.ws); }
+  return n.bb;
+}
+function layoutGrid(root, aspect) { // sections snake across in rows of whole cells; the row count is chosen for the largest type at overview
+  (function m(n) { measure(n); n.kids.forEach(m); })(root);
+  root.wx = 0; root.wy = 0; root.ws = GS(0);
+  const N = root.kids.length, gx = 3, gy = 2, lead = 3;     // cells between sections · between rows · of headroom for a section's number
+  const it = root.kids.map(c => { const bot = putCol(c, 0.5, 0.5), b = wbox(c, hull(c)); return { c, w: Math.max(4, Math.ceil(b.x1)), h: Math.ceil(bot) + lead }; });
+  const headW = Math.ceil(root.box.x1 * root.ws), top = Math.ceil(root.box.y1 * root.ws) + 1;
+  let best = null;
+  for (let r = 1; r <= Math.min(N, 8); r++) {
+    const rows = partition(it.map(i => i.w), r, gx);
+    rows.forEach(row => { row.h = Math.max(...it.slice(row.a, row.b).map(i => i.h)); });
+    const W = Math.max(headW, ...rows.map(row => row.w)), Ht = top + 1.3 + rows.reduce((a, row) => a + row.h, 0) + gy * (r - 1);
+    const fit = Math.min(aspect / (W + 1), 1 / Ht);
+    if (!best || fit > best.fit * 1.02) best = { fit, rows, W };
+  }
+  let y = top;
+  best.rows.forEach((row, ri) => {
+    const rtl = ri % 2 === 1; let x = rtl ? best.W : 0;
+    for (let i = row.a; i < row.b; i++) {
+      const { c, w } = it[i], left = rtl ? x - w : x, down = y + lead;
+      (function move(n) { n.wx += left; n.wy += down; n.kids.forEach(move); })(c);
+      c.gx = left; c.gy = down; c.gbot = y + row.h;
+      x += rtl ? -(w + gx) : w + gx;
+    }
+    y += row.h + gy;
+  });
+  hull(root);
+}
+function stones() {                 // the route as whole cells: along the heading's row to the next section, or down the margin to the next row
+  const top = Math.ceil(root.box.y1 * root.ws) + 1, end = n => Math.ceil(wbox(n, n.tb).x1) + 1;
+  return root.kids.map((B, k) => {
+    const A = k ? root.kids[k - 1] : null, cells = [];
+    if (!A) for (let y = top; y <= B.gy; y++) cells.push({ x: B.gx - 1, y });
+    else if (A.gy !== B.gy) for (let y = A.gbot; y <= B.gy; y++) cells.push({ x: B.gx - 1, y });
+    else if (B.gx > A.gx) for (let x = end(A); x < B.gx; x++) cells.push({ x, y: A.gy });
+    else for (let x = A.gx - 1; x >= end(B); x--) cells.push({ x, y: A.gy });
+    return { to: B, cells };
+  });
+}
+function gridArrange(root, aspect) {
+  layoutGrid(root, aspect); legs = stones();
+  for (const g of legs) for (const c of g.cells) grow(root.bb, c.x / root.ws, c.y / root.ws, (c.x + 1) / root.ws, (c.y + 1) / root.ws);
+}
+function drawFloor() {              // rulings on whole cells: faint at rest, brighter while the floor leans
+  const Z = camZ, R = Math.hypot(vw, vh) * (0.62 + 2.4 * lean), n0 = Math.floor(Math.log(26 / Z) / Math.log(4));
+  const q = v => sp ? v : Math.round(v) + 0.5, ln = (X0, Y0, X1, Y1) => { const a = flr(X0, Y0), b = flr(X1, Y1); ctx.moveTo(q(a[0]), q(a[1])); ctx.lineTo(q(b[0]), q(b[1])); };
+  for (let i = 0; i < 3; i++) {
+    const u = 4 ** (n0 + i), px = u * Z, a = sstep(13, 60, px) * [0.13, 0.24, 0.36][i] * (1 + 1.5 * lean) * (1 - 0.5 * sstep(700, 2400, px)) * (DARK ? 1 : 0.62);   // dark lines on a light ground read heavier
+    if (a < 0.006) continue;
+    ctx.strokeStyle = ink(Math.min(0.9, a)); ctx.lineWidth = i === 2 ? 1.4 : 1; ctx.beginPath();
+    const x0 = Math.ceil((cam.x - R / Z) / u) * u, y0 = Math.ceil((cam.y - R / Z) / u) * u;
+    for (let x = x0; (x - cam.x) * Z < R; x += u) ln((x - cam.x) * Z, -R, (x - cam.x) * Z, R);
+    for (let y = y0; (y - cam.y) * Z < R; y += u) ln(-R, (y - cam.y) * Z, R, (y - cam.y) * Z);
+    ctx.stroke();
+    if (i === 1 && px > 44 && (2 * R / px) ** 2 < 2600) {     // a bright point where the heavier rulings cross
+      ctx.fillStyle = hi(Math.min(0.9, a * 2.6));
+      for (let x = x0; (x - cam.x) * Z < R; x += u) for (let y = y0; (y - cam.y) * Z < R; y += u) { const p = spot(x, y); if (p[0] > -4 && p[0] < vw + 4 && p[1] > -4 && p[1] < vh + 4) { const w = Math.max(1.4, 2.2 * p[2]); ctx.fillRect(p[0] - w / 2, p[1] - w / 2, w, w); } }
+    }
+  }
+}
+function drawStones(now) {          // unflown cells are outlines; a hop lights its cells in order, in the highlight first and then in ink
+  for (const g of legs) {
+    const flown = g.to.visited;
+    if (flown !== g.was) { const live = g.was === false && flown && !reduced.matches; g.t0 = live ? now + (flight ? flight.dur * 0.12 : 0) : -1e9; g.dur = live && flight ? Math.max(380, flight.dur * 0.6) : 420; g.was = flown; }
+    for (let j = 0; j < g.cells.length; j++) {
+      const c = g.cells[j], p = spot(c.x + 0.5, c.y + 0.5), u = camZ * p[2]; if (u < 4 || p[0] < -u || p[0] > vw + u || p[1] < -u || p[1] > vh + u) continue;
+      const t = flown ? (now - g.t0 - g.dur * j / g.cells.length) / 1000 : -1, on = t >= 0, pop = on ? 1 - Math.min(1, t / 0.18) : 0, h = (on ? 0.21 + 0.16 * pop : 0.13) * u;
+      if (on) { const fresh = 1 - sstep(0.1, 1.6, t); ctx.fillStyle = fresh > 0.02 ? `rgba(${blend(C.ink, C.highlight, fresh).map(Math.round).join(',')},${0.5 + 0.45 * fresh})` : ink(0.5); ctx.fillRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
+      else { ctx.strokeStyle = ink(0.34); ctx.lineWidth = 1; ctx.strokeRect(p[0] - h, p[1] - h, 2 * h, 2 * h); }
+    }
+  }
+}
+function drawSquare(n, sx, sy, fpx, a, rel) {   // every stop is a square: hollow until visited, ink after, the accent where you are
+  if (n.d === 0) return;
+  const here = n === focus, h = markR(n) * fpx;
+  if (n.hit && !here) { const o = Math.max(h, 1.6) + 4; ctx.strokeStyle = hi(0.95); ctx.lineWidth = 1; ctx.strokeRect(sx - o, sy - o, 2 * o, 2 * o); }
+  if (fpx < 7) { const w = Math.max(1.5, 2 * h); ctx.fillStyle = here ? acc(1) : ink((n.visited ? 0.95 : 0.55) * (0.45 + 0.55 * rel)); ctx.fillRect(sx - w / 2, sy - w / 2, w, w); return; }
+  const ma = Math.max(a, 0.1);
+  if (here) { ctx.fillStyle = acc(1); ctx.fillRect(sx - h, sy - h, 2 * h, 2 * h); ctx.strokeStyle = ink(1); ctx.lineWidth = 1.5; ctx.strokeRect(sx - h, sy - h, 2 * h, 2 * h); }
+  else if (n.visited) { ctx.fillStyle = ink(0.35 + 0.6 * ma); ctx.fillRect(sx - h, sy - h, 2 * h, 2 * h); }
+  else { ctx.strokeStyle = n === hover ? hi(1) : ink(0.25 + 0.5 * ma); ctx.lineWidth = n === hover ? 1.6 : 1.1; ctx.strokeRect(sx - h, sy - h, 2 * h, 2 * h); }
+}
+function drawLock(now) {            // arriving stamps a ring, ticks and an address on the stop; a second later only the brackets are left
+  const n = focus; if (!n || n === root || closeup) return;
+  const live = !!ripple && ripple.n === n; if (flight && (!live || now < ripple.t0)) return;
+  const p = spot(n.wx, n.wy), size = 2 * markR(n) * n.ws * camZ * p[2]; if (size < 5 || size > vh) return;
+  const cx = p[0], cy = p[1], t = live ? Math.max(0, (now - ripple.t0) / 1000) : 9, snap = 1 - 2 ** (-14 * Math.min(1, t / 0.24)), s = 1 + 1.1 * (1 - snap);
+  const r = clamp(size * 0.62, 9, 120), A = t < 0.85 ? Math.min(1, t / 0.05) : Math.max(0, 1 - (t - 0.85) / 0.45);
+  ctx.lineCap = 'butt';
+  if (A > 0.01 && !reduced.matches) {
+    ctx.strokeStyle = acc(A); ctx.lineWidth = Math.max(2.5, r * 0.2); ctx.beginPath(); ctx.arc(cx, cy, r * 1.92 * s, 0, 7); ctx.stroke();
+    const spin = 2.6 * (1 - snap) + t * 0.5;
+    ctx.strokeStyle = hi(A); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(cx, cy, r * 1.6 * s, spin, spin + 4.4); ctx.stroke();
+    ctx.strokeStyle = ink(0.9 * A); ctx.lineWidth = 1.2;
+    for (const a0 of [-2.5, 0.64]) { ctx.beginPath(); ctx.arc(cx, cy, r * 2.28 * s, a0 - spin * 0.4, a0 - spin * 0.4 + 1.0); ctx.stroke(); }
+    ctx.beginPath(); for (let i = 0; i < 24; i++) { const an = i / 24 * Math.PI * 2, r0 = r * 2.06 * s, r1 = r0 + (i % 6 ? 3 : 7); ctx.moveTo(cx + Math.cos(an) * r0, cy + Math.sin(an) * r0); ctx.lineTo(cx + Math.cos(an) * r1, cy + Math.sin(an) * r1); } ctx.stroke();
+    ctx.beginPath(); for (const [ux, uy] of [[-1, 0], [0, -1], [0, 1]]) { ctx.moveTo(cx + ux * r * 2.45 * s, cy + uy * r * 2.45 * s); ctx.lineTo(cx + ux * r * 2.95 * s, cy + uy * r * 2.95 * s); } ctx.stroke();
+    const lx = cx - r * 2.5 * s - 12, la = A * sstep(0.1, 0.24, t);
+    if (lx > 150) {                 // the stop's address, where there is room for it
+      const addr = [String(n.sec + 1).padStart(2, '0'), ...chain(n).slice(2).map(m => m.parent.kids.indexOf(m) + 1)].join('.');
+      ctx.font = `700 10.5px ${TEXT}`; if ('letterSpacing' in ctx) ctx.letterSpacing = '1.6px'; ctx.textAlign = 'right';
+      ctx.fillStyle = ink(la); ctx.fillText(`STOP ${addr} // LOCK`, lx, cy - 15);
+      ctx.fillStyle = hi(la); ctx.fillText(`${String(n.i).padStart(2, '0')} / ${nodes.length - 1}`, lx, cy + 15);
+      if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; ctx.textAlign = 'left';
+    }
+  }
+  const o = (size * 0.5 + 6) * (1 + 0.8 * (1 - snap)), L = clamp(size * 0.22, 5, 13);   // the brackets stay as "you are here"
+  ctx.strokeStyle = ink(1); ctx.lineWidth = 2; ctx.beginPath();
+  for (const [ux, uy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ctx.moveTo(cx + ux * o, cy + uy * (o - L)); ctx.lineTo(cx + ux * o, cy + uy * o); ctx.lineTo(cx + ux * (o - L), cy + uy * o); }
+  ctx.stroke();
+}
+function drawFrame() {              // corner brackets and ruler ticks hold the view
+  const m = 9.5, L = 13; ctx.strokeStyle = ink(0.8); ctx.lineWidth = 1; ctx.lineCap = 'butt'; ctx.beginPath();
+  for (const [x, y, ux, uy] of [[m, m, 1, 1], [vw - m, m, -1, 1], [vw - m, vh - m, -1, -1], [m, vh - m, 1, -1]]) { ctx.moveTo(x + ux * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + uy * L); }
+  ctx.stroke();
+  const k = Math.max(2, Math.round((vw - 120) / 24)), step = (vw - 120) / k;
+  for (let i = 0; i <= k; i++) { const x = Math.round(60 + i * step), big = i % 5 === 0, h = big ? 6 : 3; ctx.fillStyle = big ? hi(0.9) : ink(0.4); ctx.fillRect(x, 8, 1, h); ctx.fillRect(x, vh - 8 - h, 1, h); }
+}
+THEMES.grid = {
+  id: 'grid', name: 'Grid', palette: 'mono', soft: [0.74, 0.45, 0.32], lean: true, hoverInk: true,
+  faces: ['"Arial Black","Helvetica Neue",Arial,sans-serif', '"Helvetica Neue",Helvetica,Arial,sans-serif'], ui: '"Helvetica Neue",Helvetica,Arial,sans-serif',
+  css: `:root{--bars:repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 3px,var(--ink) 3px 5px,transparent 5px 6px,var(--ink) 6px 7px,transparent 7px 10px,var(--ink) 10px 11px,transparent 11px 13px)}
+.cap,#sheet h2,#q{font-weight:700}
+.seg::before,.seg i{top:5px;height:11px;background:var(--bars)}
+.seg::before{opacity:.34}
+.seg:hover::before{background:var(--bars);opacity:.7}
+.seg i{transform:none;clip-path:inset(0 calc((1 - var(--p,0))*100%) 0 0);transition:clip-path .5s cubic-bezier(.16,1,.3,1)}
+@media (prefers-reduced-motion:reduce){.seg i{transition:none}}`,
+  notesCss: '#pv-now,#pv-time{font-weight:700}',
+  font: n => isHead(n) ? { fam: DISPLAY, wt: 900 } : { fam: TEXT, wt: 500 },
+  textX: n => n.d === 0 ? 0 : n.d === 1 ? 1.39 : 1.67,
+  markR: n => n.d === 0 ? 0 : n.d === 1 ? 0.39 : 0.4,
+  headEm: (n, len) => { const cap = n.d === 0 ? [20, 14] : n.d === 1 ? [16, 11] : [30, 20]; return len <= cap[0] ? 60 : cap[1]; },   // heavy capitals run wide, so headings turn sooner
+  headText: s => s.toUpperCase(),
+  arrange: gridArrange,
+  padLeft: n => n !== root && vw > 720 ? Math.min(vw * 0.09, 140) : 0,       // room on the left for the arrival label
+  frame(n, f) { if (n.d === 1) f.y0 = Math.min(f.y0, n.wy - 2.8); },         // a section is framed with its number
+  ground() { ctx.fillStyle = gnd(1); ctx.fillRect(0, 0, vw, vh); ctx.lineJoin = 'miter'; drawFloor(); },
+  route(now) {
+    drawStones(now);
+    if (lean > 0.02) {              // the far side of the leaning floor falls away into the ground colour
+      const g = ctx.createLinearGradient(0, vh * 0.58, 0, -vh * 0.25); g.addColorStop(0, gnd(0)); g.addColorStop(1, gnd(Math.min(0.9, lean * 1.7)));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+    }
+  },
+  before(n, sx, sy, fpx, rel) {     // a section's number, set large above its heading
+    const px = 2.89 * fpx; if (n.d !== 1 || px < 7 || px >= vh * 1.6) return;
+    ctx.font = `900 ${px}px ${DISPLAY}`; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = acc(0.42 + 0.58 * rel);
+    ctx.fillText(String(n.sec + 1).padStart(2, '0'), sx - 0.62 * fpx, sy - 0.87 * fpx); ctx.textBaseline = 'middle';
+  },
+  mark: drawSquare,
+  over(now) {
+    if (!closeup) for (const [y0, y1, a] of [[0, 84, 0.9], [vh, vh - 76, 0.86]]) {   // neighbouring lines fade out under the location bar and the progress bar
+      const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, gnd(a)); g.addColorStop(1, gnd(0));
+      ctx.fillStyle = g; ctx.fillRect(0, Math.min(y0, y1), vw, Math.abs(y1 - y0));
+    }
+    drawLock(now); drawFrame();
+  },
+  miniHere: () => hi(1),
+};
+
+/* ───────── chrome ───────── */
+const short = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+function buildSegs() {
+  const segs = $('#segs'); segs.replaceChildren();
+  root.kids.forEach((c, i) => { const b = document.createElement('button'); b.className = 'seg'; b.style.flex = c.size; b.title = `${i + 1}  ${c.text}`; b.setAttribute('aria-label', `Waypoint ${i + 1}: ${c.text}`); b.append(document.createElement('i')); b.onclick = () => { travel(c); b.blur(); }; segs.append(b); });
+}
+function hud() {
+  const crumb = $('#crumb'); crumb.replaceChildren();
+  chain(focus).forEach((n, i, all) => {
+    if (i) { const s = document.createElement('i'); s.textContent = '/'; crumb.append(s); }
+    const b = document.createElement('button'); b.textContent = (n.d === 1 ? n.sec + 1 + '  ' : '') + short(n.text, 38); b.title = n.text;
+    if (i === all.length - 1) b.setAttribute('aria-current', 'location');
+    b.onclick = () => { travel(n); b.blur(); }; crumb.append(b);
+  });
+  [...$('#segs').children].forEach((el, i) => { const c = root.kids[i]; el.style.setProperty('--p', clamp((focus.i - c.i + 1) / c.size, 0, 1)); });
+  $('#count').textContent = focus === root ? `${nodes.length - 1} stops` : `${focus.i} / ${nodes.length - 1}`;
+  const link = $('#link'); link.hidden = !focus.url; if (focus.url) { link.href = focus.url; link.textContent = 'Open ' + host(focus.url); }
+  $('#live').textContent = (chain(focus).slice(1).map(n => n.text).join(', ') || root.text) + focus.pics.map(p => ', picture' + (p.alt ? ': ' + p.alt : '')).join('');
+  renderNotes();
+}
+let picKey = null;
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify({ src: source === BASE ? null : source, title: docTitle, at: focus?.i || 0 })); } catch {}
+  const mine = {}; for (const id of new Set(refs(source))) if (assets[id] && !BUILT[id]) mine[id] = assets[id];
+  const key = Object.keys(mine).join(); if (key === picKey) return; picKey = key;   // pictures are large: write them only when the set changes
+  try { key ? localStorage.setItem(STORE + ':img', JSON.stringify(mine)) : localStorage.removeItem(STORE + ':img'); }
+  catch { toast('Storage here is full, so new pictures last only until this tab closes. Save as a file to keep them.'); }
+}
+function load(src, title, at) {
+  build(src, title);
+  focus = null; travel(nodes[at] || root, true);
+  if (at) chain(focus).forEach(n => { n.visited = true; });
+}
+let toastTimer = 0, undoSrc = null, toastDo = null;
+function toast(msg, prevSrc, act, alt) {   // act, alt: { label, run } add buttons that do the next step
+  const t = $('#toast'); t.firstElementChild.textContent = msg; undoSrc = prevSrc ?? null; t.lastElementChild.hidden = undoSrc == null;
+  toastDo = [act || null, alt || null]; toastDo.forEach((a, i) => { const b = t.children[1 + i]; b.hidden = !a; if (a) b.textContent = a.label; }); t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, act ? 16000 : 7000);
+}
+function adopt(src, title, msg) {   // replace the outline from a paste, a drop or the editor
+  const before = { src: source, title: docTitle };
+  try { load(src, title, 0); } catch (e) { toast(e.message); return false; }
+  unfollow();
+  if (msg) toast(msg, before);
+  return true;
+}
+/* ───────── following a file: where the browser hands over the file itself, its saves redraw the chart ───────── */
+function showFollow() {
+  const b = $('#follow'); b.hidden = !follow; document.body.classList.toggle('following', !!follow);
+  if (follow) { b.textContent = 'Following ' + follow.name; b.title = 'The chart redraws when this file is saved. Click to stop following it.'; }
+}
+function unfollow() { const was = follow; follow = null; showFollow(); return was ? was.name : null; }
+function refresh(src) {             // the outline changed on disk: redraw around the stop you are on, keeping the trail
+  closeFind('stay');
+  const old = focus, at = old.i, seen = new Set(nodes.filter(n => n.visited).map(n => n.text)), dims = nodes.map(n => n.dim), ox = old.wx, oy = old.wy, roam = roamT;
+  try { build(src, docTitle); } catch { return; }   // half-saved or emptied: keep showing the last good version
+  let m = nodes[at]?.text === old.text ? nodes[at] : null;
+  if (!m) m = nodes.filter(n => n.text === old.text).sort((a, b) => Math.abs(a.i - at) - Math.abs(b.i - at))[0] || nodes[Math.min(at, nodes.length - 1)];
+  nodes.forEach((n, i) => { n.visited = seen.has(n.text); if (dims[i] != null) n.dim = dims[i]; });
+  const dx = m.wx - ox, dy = m.wy - oy; cam.x += dx; cam.y += dy; tgt.x += dx; tgt.y += dy; flight = null;
+  const keep = { x: tgt.x, y: tgt.y, l: tgt.l };
+  travel(m, false, true); m.visited = true; ripple = null;
+  if (roam) { flight = null; Object.assign(tgt, keep); roamT = 1; }
+  save();
+}
+async function pollFollow() {
+  const fo = follow; if (!fo || fo.busy || editing && sheetFor === fo) return; fo.busy = true;   // while you edit it here, a change on disk waits: saving then reports it
+  try {
+    const f = await fo.h.getFile();
+    if (f.lastModified !== fo.stamp || f.size !== fo.size) {
+      fo.stamp = f.lastModified; fo.size = f.size;
+      const t = await f.text(); fo.text = t;
+      if (follow === fo && t !== source) refresh(t);
+    }
+    fo.miss = 0;
+  } catch { if (++fo.miss > 4 && follow === fo) { unfollow(); toast(`“${fo.name}” can no longer be read, so the chart keeps its last version.`); } }
+  fo.busy = false;
+}
+setInterval(pollFollow, 900);
+async function chartFile(f, h) {    // an outline file from a drop or the picker
+  const texty = /^text\//.test(f.type) || /\.(md|markdown|mdown|txt|text)$/i.test(f.name);
+  if (!texty || f.size > 2e6) { toast(`“${f.name}” is not an outline or a picture. Use a Markdown or text file, or an image.`); return; }
+  const text = await f.text(), live = !!h && h.kind === 'file' && typeof h.getFile === 'function';
+  closeFind(false); closeSheet();
+  if (!adopt(text, f.name.replace(/\.[^.]+$/, ''), `Charted ${f.name}.` + (live ? ' Save the file again and the chart redraws.' : ''))) return;
+  if (live) { follow = { h, name: f.name, stamp: f.lastModified, size: f.size, miss: 0, busy: false, text }; showFollow(); }
+}
+const sheet = $('#sheet'), ta = $('#src');
+let draftTitle = null, sheetFor = null, opened = null;   // the title being edited · the followed file this editor writes to · the outline as it was when the editor opened
+let editing = false, liveT = 0, caretT = 0, hideT = 0, caretDriven = false;
+const MODKEY = /Mac|iP/.test(navigator.platform) ? '⌘S' : 'Ctrl+S';
+const fileOf = () => sheetFor && sheetFor === follow ? follow : null;
+function showEd() {
+  if (!editing) return;
+  const fo = fileOf(), dirty = !!fo && source !== fo.text, b = $('#edsave');
+  $('#edstate').textContent = fo ? (dirty ? `Not saved · ${MODKEY} saves to ${short(fo.name, 26)}` : `Saved in ${short(fo.name, 30)}`) : 'The chart follows as you type';
+  b.hidden = !fo; b.disabled = !dirty; if (fo) b.textContent = 'Save to ' + short(fo.name, 24);
+}
+const mirror = document.createElement('div');
+function lineY(pos) {               // how far down the box the line holding pos starts, wrapped lines included
+  const cs = getComputedStyle(ta);
+  Object.assign(mirror.style, { position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', boxSizing: 'border-box', border: '0', width: ta.clientWidth + 'px', padding: cs.padding, font: cs.font, letterSpacing: cs.letterSpacing });
+  if (!mirror.isConnected) document.body.append(mirror);
+  mirror.textContent = ta.value.slice(0, pos) + '.';
+  return mirror.scrollHeight - parseFloat(cs.paddingBottom) - parseFloat(cs.lineHeight);
+}
+function placeCaret(n) {            // the caret to the end of a stop's line, scrolled into view if it is not; the overview puts it at the top
+  if (ta.value !== source) return;
+  const v = ta.value, row = n === root ? null : n.line; let pos = 0;
+  if (row != null) {
+    for (let i = 0; i < row; i++) { const nl = v.indexOf('\n', pos); if (nl < 0) { pos = v.length; break; } pos = nl + 1; }
+    const nl = v.indexOf('\n', pos); pos = nl < 0 ? v.length : nl;
+  }
+  if (ta.selectionStart !== pos || ta.selectionEnd !== pos) ta.setSelectionRange(pos, pos);
+  const y = row == null ? 0 : lineY(pos);
+  if (row == null) ta.scrollTop = 0;
+  else if (y < ta.scrollTop + 16 || y > ta.scrollTop + ta.clientHeight - 48) ta.scrollTop = Math.max(0, y - ta.clientHeight * 0.42);
+}
+function caretStop() {              // the stop whose line the caret is on, or the last one above it
+  const row = ta.value.slice(0, ta.selectionStart).split('\n').length - 1;
+  return nodes.filter(n => n.line != null && n.line <= row).sort((a, b) => b.line - a.line || b.i - a.i)[0] || root;
+}
+function goCaret(n) { caretDriven = true; try { travel(n); } finally { caretDriven = false; } }
+function caretGo() {                // the caret moved without the text changing: the chart flies to its stop
+  clearTimeout(caretT); caretT = 0;
+  if (!editing || liveT || ta.value !== source) return;
+  const m = caretStop(); if (m !== focus) goCaret(m);
+}
+function liveChart() {              // the text changed: chart it, keeping the trail and the camera's place, and land on the caret's stop
+  clearTimeout(liveT); liveT = 0;
+  const text = ta.value;
+  if (text === source) { caretGo(); return; }
+  const old = focus, ox = old.wx, oy = old.wy, seen = new Set(nodes.filter(n => n.visited).map(n => n.text)), dims = new Map(nodes.map(n => [n.text, n.dim]));
+  try { build(text, draftTitle); } catch (e) { $('#err').textContent = e.message; return; }   // nothing to chart yet: the last good chart stays
+  $('#err').textContent = '';
+  nodes.forEach(n => { n.visited = seen.has(n.text); if (dims.has(n.text)) n.dim = dims.get(n.text); });
+  const same = nodes.find(n => n.text === old.text);
+  if (same) { const dx = same.wx - ox, dy = same.wy - oy; cam.x += dx; cam.y += dy; tgt.x += dx; tgt.y += dy; flight = null; }
+  focus = same || root;
+  if (follow && sheetFor !== follow) { const was = unfollow(); if (was) toast(`No longer following ${was}, because the chart now shows a different outline.`); }
+  const m = caretStop(); goCaret(m);
+  if (same && m.text === old.text) ripple = null;   // still on the same stop: no arrival stamp at every pause in typing
+  showEd();
+}
+function openSheet() {              // the editor slides in beside the chart, its caret on the line of the stop you are on
+  closeFind(false); toggleLook(false);
+  if (!editing) {
+    clearTimeout(hideT); editing = true; sheet.hidden = false; document.body.classList.add('editing');
+    draftTitle = docTitle; sheetFor = follow; opened = { src: source, title: docTitle, at: focus.i };
+    ta.value = source; $('#err').textContent = '';
+    requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('open')));
+    if (!roamT) flyTo(home());
+  }
+  ta.focus({ preventScroll: true }); placeCaret(focus); showEd();
+}
+function closeSheet() {             // Done: a followed file is written; otherwise the edits stay on the chart, with Undo
+  if (!editing) return;
+  if (liveT) liveChart();
+  const fo = fileOf(), stuck = $('#err').textContent;
+  editing = false; document.body.classList.remove('editing'); sheet.classList.remove('open'); clearTimeout(caretT);
+  if (sheet.contains(document.activeElement)) document.activeElement.blur();
+  clearTimeout(hideT); hideT = setTimeout(() => { if (!editing) sheet.hidden = true; }, reduced.matches ? 0 : 400);
+  if (fo && source !== fo.text) saveTo(fo, source);
+  else if (!fo && opened && source !== opened.src) toast('Your edits are on the chart. Save as a file to keep a copy.', opened);
+  if (stuck) toast('The last edit left nothing to chart, so the chart keeps the version before it.');
+  if (!roamT) flyTo(home());
+}
+ta.addEventListener('input', () => { clearTimeout(liveT); liveT = setTimeout(liveChart, 260); });
+const caretSoon = () => { if (editing && document.activeElement === ta) { clearTimeout(caretT); caretT = setTimeout(caretGo, 140); } };
+document.addEventListener('selectionchange', caretSoon); ta.addEventListener('pointerup', caretSoon); ta.addEventListener('keyup', caretSoon);
+async function saveTo(fo, text, force) {   // an edit made here goes back into the file being followed; → true once written
+  const fail = why => { if (follow === fo) unfollow(); toast(why); };
+  fo.busy = true;
+  try {
+    let ok = await fo.h.queryPermission({ mode: 'readwrite' }); if (ok !== 'granted') ok = await fo.h.requestPermission({ mode: 'readwrite' });
+    if (ok !== 'granted') { fail(`Not saved: the browser was not allowed to write “${fo.name}”. The edit is on the chart only, and the file is no longer followed.`); return; }
+    const cur = await (await fo.h.getFile()).text();
+    if (!force && cur !== fo.text) {   // someone else saved it meanwhile: never write over that without being told to
+      if (follow === fo) unfollow();
+      toast(`Not saved: “${fo.name}” changed on disk while you were editing. The edit is on the chart only.`, null, { label: 'Save over it', run: () => {
+        if (source !== text) { toast('The outline has changed since then, so nothing was saved.'); return; }
+        follow = fo; showFollow(); saveTo(fo, text, true);
+      } });
+      return;
+    }
+    const w = await fo.h.createWritable(); await w.write(text); await w.close();
+    const f = await fo.h.getFile(); fo.stamp = f.lastModified; fo.size = f.size;
+    fo.text = text; toast(`Saved to ${fo.name}.`); showEd(); return true;
+  } catch { fail(`“${fo.name}” could not be written, so the edit is on the chart only. The file is no longer followed.`); }
+  finally { fo.busy = false; showEd(); }
+  return false;
+}
+function toggleKeys(force) { const k = $('#keys'), open = force ?? k.hidden; if (open) toggleLook(false); k.hidden = !open; document.querySelector('[data-act=keys]').setAttribute('aria-expanded', String(open)); }
+const acts = {
+  edit: openSheet, close: closeSheet, keys: () => toggleKeys(),
+  find: () => finding ? closeFind(false) : openFind(),
+  notes: () => toggleNotes(),
+  prev: () => prev(), next: () => next(),
+  full: () => {
+    const d = document, el = d.documentElement;
+    if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { toast('This browser cannot show a page fullscreen.'); return; }
+    Promise.resolve(req.call(el)).catch(() => toast('Fullscreen was blocked here.'));
+  },
+  save: () => {
+    if (liveT) liveChart();
+    const fo = fileOf();
+    if (fo) { if (source !== fo.text) saveTo(fo, source); else toast(`${fo.name} is up to date.`); }
+    else toast('This outline is not from a file. Save as a file keeps a copy; Open a file edits one in place.');
+  },
+  sample: () => { ta.value = BASE; draftTitle = BASE_TITLE; sheetFor = null; ta.focus(); ta.setSelectionRange(0, 0); ta.scrollTop = 0; liveChart(); },
+  open: async () => {
+    if (!window.showOpenFilePicker) { $('#file').click(); return; }
+    let h; try { [h] = await window.showOpenFilePicker({ id: 'waypoint-outline', types: [{ description: 'Outlines', accept: { 'text/plain': ['.md', '.markdown', '.txt'] } }] }); }
+    catch (e) { if (e.name !== 'AbortError') $('#file').click(); return; }
+    chartFile(await h.getFile(), h);
+  },
+  unfollow: () => { const was = unfollow(); if (was) toast(`Stopped following ${was}. The chart keeps what it has.`); },
+  toastdo: () => { const a = toastDo?.[0]; $('#toast').hidden = true; if (a) a.run(); },
+  toastdo2: () => { const a = toastDo?.[1]; $('#toast').hidden = true; if (a) a.run(); },
+  undo: () => { if (undoSrc != null) { unfollow(); load(undoSrc.src, undoSrc.title, undoSrc.at || 0); $('#toast').hidden = true; } },
+  pic: () => $('#picfile').click(),
+  look: () => toggleLook(),
+  theme: () => { const ids = Object.keys(THEMES); setLook({ theme: ids[(ids.indexOf(TH.id) + 1) % ids.length] }); sayLook(); },
+  palette: () => { const ids = Object.keys(pals()); setLook({ palette: ids[(ids.indexOf(curPal()) + 1) % ids.length] }); sayLook(); },
+  mode: () => { setLook({ mode: modeNow() === 'dark' ? 'light' : 'dark' }); sayLook(); },
+  lean: () => {
+    if (!TH.lean) { toast('This theme does not lean. Press T for one that does.'); return; }
+    setLook({ lean: !leanOn });
+    toast(leanOn ? 'The floor leans in flight again.' : 'The floor stays flat in flight.');
+  },
+  keep: () => keepInOutline(), unlook: () => resetLook(), unpal: () => { delete MINE[curPal()]; setLook({ palette: null }); },
+  export: () => {
+    if (editing && liveT) liveChart();
+    const name = (root.text.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 60) || 'Outline') + ' - Waypoint.html';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([standalone()], { type: 'text/html' })); a.download = name;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const linked = nodes.reduce((k, n) => k + n.pics.filter(p => !/^(?:img|data):/.test(p.src)).length, 0);
+    toast(`Saved “${name}”. It opens offline in any browser.` + (linked ? ` ${linked} linked picture${linked > 1 ? 's are' : ' is'} not inside it.` : ''));
+  },
+};
+/* ───────── look: a theme, a palette and a mode ─────────
+   The outline's front matter sets them. What you change here is remembered, and holds until that front matter changes.
+   Save in outline writes your choice back into the front matter, so it travels with the text and with the file. */
+const ROLES = ['ground', 'ink', 'accent', 'highlight'];
+let SET = { theme: 'chart', palette: null, mode: 'dark', lean: true }, MINE = {}, DOCPAL = {}, DECKPAL = {}, VARS = '';   // MINE: palettes made here · DOCPAL: the outline's · DECKPAL: a saved file's
+const lightNow = matchMedia('(prefers-color-scheme: light)'), lookEl = $('#look');
+const themeCss = document.head.appendChild(Object.assign(document.createElement('style'), { id: 'theme-css' }));
+const modeNow = () => SET.mode === 'light' || SET.mode === 'auto' && lightNow.matches ? 'light' : 'dark';
+const pals = () => ({ ...BUILTIN, ...DECKPAL, ...DOCPAL, ...MINE });
+const curPal = () => { const all = pals(); return SET.palette && all[SET.palette] ? SET.palette : all[TH.palette] ? TH.palette : 'blueprint'; };
+const samePal = (a, b) => JSON.stringify([a.dark, a.light]) === JSON.stringify([b.dark, b.light]);
+const sayLook = () => toast(`${TH.name} · ${pals()[curPal()].name} · ${modeNow()}`);
+function keepLook() { try { localStorage.setItem(STORE + ':look', JSON.stringify(SET)); localStorage.setItem('waypoint.palettes', JSON.stringify(MINE)); } catch {} }
+function initLook() {               // your last choice here, else the look a saved file was given
+  const take = (from, into) => { if (from && typeof from === 'object') for (const id in from) { const p = norm(from[id], id); if (p) into[id] = p; } };
+  let st = null, o = null; try { st = localStorage.getItem(STORE + ':look'); o = JSON.parse(st); } catch {}
+  if (o && typeof o === 'object') Object.assign(SET, o);
+  else {
+    if (st === 'grid' || st === 'chart') SET.theme = st;              // kept by an earlier version
+    else if (DECK?.set && typeof DECK.set === 'object') Object.assign(SET, DECK.set);
+    else if (DECK?.look === 'grid') SET.theme = 'grid';
+    try { if (localStorage.getItem('waypoint.lean') === '0') SET.lean = false; } catch {}
+  }
+  try { take(JSON.parse(localStorage.getItem('waypoint.palettes')), MINE); } catch {}
+  take(DECK?.pal, DECKPAL);
+  if (!THEMES[SET.theme]) SET.theme = 'chart';
+  if (!/^(?:dark|light|auto)$/.test(SET.mode)) SET.mode = 'dark';
+}
+function syncFront(src) {           // read the outline's own settings; they win whenever they have changed since they were last seen
+  const f = readFront(src), key = JSON.stringify(f);
+  DOCPAL = f.palettes;
+  if (key === SET.fm) return;
+  for (const id in f.palettes) if (MINE[id] && !samePal(MINE[id], f.palettes[id])) delete MINE[id];
+  Object.assign(SET, f.set); SET.fm = key; keepLook();
+}
+function tones(p) {                 // one mode of a palette → every colour the page uses
+  const g = rgbOf(p.ground), i = rgbOf(p.ink), a = rgbOf(p.accent), h = rgbOf(p.highlight), dark = lum(g) < lum(i);
+  const deep = p.surface ? rgbOf(p.surface) : dark ? (lum(g) < 0.012 ? blend(g, i, 0.045) : blend(g, BLACK, 0.37)) : blend(g, WHITE, 0.55);
+  const ka = contrast(a, deep), key = ka >= 4.5 || ka >= contrast(h, deep) ? a : h;          // buttons, carets and focus rings take whichever accent reads on a panel
+  const on = c => contrast(c, deep) >= contrast(c, i) ? deep : i;                            // a figure set on a fill of colour c
+  return { dark, ground: g, ink: i, accent: a, highlight: h, deep, key, onAccent: on(a),
+    well: dark ? blend(deep, BLACK, 0.2) : blend(deep, i, 0.035), inset: dark ? blend(g, BLACK, 0.12) : blend(g, i, 0.03),
+    veil: dark ? [blend(g, BLACK, 0.5), 0.74] : [blend(i, BLACK, 0.2), 0.36], wash: [deep, dark ? 0.82 : 0.88], soft: dark ? TH.soft : [0.78, 0.58, 0.26] };
+}
+function paint() {                  // colours and lettering for the theme, palette and mode now chosen
+  const t = c => c.map(Math.round).join(','), el = document.documentElement;
+  C = tones(pals()[curPal()][modeNow()]); DARK = C.dark;
+  INK = t(C.ink); ACC = t(C.accent); HI = t(C.highlight); GND = t(C.ground); ONACC = t(C.onAccent); UNDER = t(C.deep);
+  [DISPLAY, TEXT] = TH.faces;
+  const v = { ground: hexOf(C.ground), deep: hexOf(C.deep), well: hexOf(C.well), inset: hexOf(C.inset), ink: hexOf(C.ink), 'ink-2': ink(C.soft[0]), 'ink-3': ink(C.soft[1]), rule: ink(C.soft[2]),
+    accent: hexOf(C.key), veil: `rgba(${t(C.veil[0])},${C.veil[1]})`, wash: `rgba(${t(C.wash[0])},${C.wash[1]})`, display: TH.ui || DISPLAY, text: TEXT };
+  VARS = Object.entries(v).map(([k, x]) => `--${k}:${x}`).join(';') + `;color-scheme:${DARK ? 'dark' : 'light'}`;
+  el.style.cssText = VARS; el.dataset.theme = TH.id; themeCss.textContent = TH.css || '';
+  document.querySelector('meta[name=theme-color]').content = v.ground;
+  TH.resize?.(); skinNotes(); showLook();
+}
+function applyLook(quiet) {         // quiet: colours and lettering only, when the caller is about to lay the chart out anyway
+  const was = TH; TH = THEMES[SET.theme] || THEMES.chart; leanOn = SET.lean !== false;
+  paint();
+  if (quiet || !root || was === TH) return;
+  tilt.p = tilt.vp = 0; hover = null; ripple = null; arrange(); roamT = 0; flyTo(home(), true);   // a new theme lays the outline out afresh; the trail and your place stay
+}
+function setLook(patch) {           // change part of the look, and remember it
+  Object.assign(SET, patch);
+  if ('palette' in patch && patch.palette === (THEMES[SET.theme] || THEMES.chart).palette) SET.palette = null;   // the theme's own palette is "no choice": it follows the theme
+  keepLook(); applyLook();
+}
+function resetLook() {              // back to what the outline says, and the theme's own palette
+  SET = { theme: 'chart', palette: null, mode: 'dark', lean: true, ...readFront(source).set, fm: SET.fm };
+  keepLook(); applyLook(); sayLook();
+}
+function tint(role, hex) {          // a colour well moved: the palette in use becomes one of your own, if it was not already
+  const all = pals(), mode = modeNow(); let id = curPal();
+  if (!MINE[id]) { let n = 2; while (all[`${id} ${n}`]) n++; const from = all[id], nid = `${id} ${n}`; MINE[nid] = { name: `${from.name} ${n}`, dark: { ...from.dark }, light: { ...from.light } }; id = nid; }
+  const s = MINE[id][mode]; s[role] = hex.toLowerCase(); if (role === 'ground') delete s.surface;
+  SET.palette = id; keepLook(); paint();
+}
+function keepInOutline() {          // write the look into the outline itself
+  const cur = curPal(), keep = { ...DOCPAL, [cur]: pals()[cur] };   // the palette in use goes in with its colours, so the note shows where to change them
+  if (editing && liveT) liveChart();
+  const next = writeFront(source, { ...SET, palette: cur }, keep);
+  if (next === source) { toast('The outline already carries this look.'); return; }
+  const was = { src: source, title: docTitle, at: focus.i }, fo = follow, inEd = editing && ta.value === source, a = ta.selectionStart, b = ta.selectionEnd, d = next.length - source.length;
+  refresh(next);
+  if (source !== next) { toast('The look could not be written into this outline.'); return; }
+  if (inEd) { ta.value = next; ta.setSelectionRange(a + d, b + d); showEd(); }   // the front matter sits above the caret
+  if (fo && follow === fo) saveTo(fo, next); else toast('The look is now in the outline, as front matter at the top.', was);
+}
+function toggleLook(force) {
+  const open = force ?? lookEl.hidden; if (open) toggleKeys(false);
+  lookEl.hidden = !open; document.body.classList.toggle('looking', open); document.querySelector('[data-act=look]').setAttribute('aria-expanded', String(open)); showLook();
+}
+function showLook() {               // the panel mirrors what is chosen; it is only filled in while it is open
+  if (lookEl.hidden) return;
+  const all = pals(), cur = curPal(), mode = modeNow(), own = !!MINE[cur];
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
+  const opt = (b, on, run) => { b.type = 'button'; b.setAttribute('aria-pressed', String(on)); b.onclick = () => { run(); b.blur(); }; return b; };
+  $('#lk-theme').replaceChildren(...Object.values(THEMES).map(th => opt(el('button', th.name), th === TH, () => setLook({ theme: th.id }))));
+  $('#lk-mode').replaceChildren(...['dark', 'light', 'auto'].map(m => opt(el('button', m), m === SET.mode, () => setLook({ mode: m }))));
+  $('#lk-pals').replaceChildren(...Object.keys(all).map(id => {
+    const b = opt(el('button'), id === cur, () => setLook({ palette: id })), sw = el('span', '', 'sw');
+    for (const r of ROLES) { const i = el('i'); i.style.background = all[id][mode][r]; sw.append(i); }
+    b.append(sw, el('span', all[id].name)); if (MINE[id] || DOCPAL[id]) b.append(el('small', MINE[id] ? 'yours' : 'from the outline'));
+    return b;
+  }));
+  for (const r of ROLES) { const inp = $('#lk-' + r); if (document.activeElement !== inp) inp.value = all[cur][mode][r]; }
+  $('#lk-note').textContent = `These are its ${mode} colours.` + (own ? '' : ' Change one and you have a palette of your own.');
+  $('#lk-own').hidden = !own; if (own && document.activeElement !== $('#lk-name')) $('#lk-name').value = all[cur].name;
+  const k = contrast(C.ink, C.ground); $('#lk-warn').textContent = k < 4.5 ? `Ink on ground is ${k.toFixed(1)} to 1. Below 4.5, text is hard to read.` : '';
+  const lb = $('#lk-lean'); lb.hidden = !TH.lean; lb.textContent = leanOn ? 'Lean on' : 'Lean off'; lb.setAttribute('aria-pressed', String(leanOn));
+}
+for (const r of ROLES) $('#lk-' + r).addEventListener('input', e => tint(r, e.target.value));
+$('#lk-name').addEventListener('change', e => {   // a palette's name is also the word that picks it in front matter
+  const cur = curPal(), name = e.target.value.replace(/[^\p{L}\p{N} _-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 32), id = name.toLowerCase(), p = MINE[cur];
+  if (!p || !id || id === cur && name === p.name) { showLook(); return; }
+  if (id !== cur && pals()[id]) { toast(`There is already a palette called ${name}.`); e.target.value = p.name; return; }
+  delete MINE[cur]; p.name = name; MINE[id] = p; setLook({ palette: id });
+});
+lightNow.addEventListener('change', () => { if (SET.mode === 'auto') paint(); });
+
+function standalone() {             // this page again, with the current outline written into it
+  const img = {}; for (const id of new Set(refs(source))) if (assets[id]) img[id] = assets[id];
+  const deck = JSON.stringify({ src: source, title: docTitle, img, set: SET, pal: MINE[curPal()] ? { [curPal()]: MINE[curPal()] } : undefined }).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return `<!doctype html>
+<html lang="en" style="${esc(VARS).replace(/"/g, '&quot;')}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="${hexOf(C.ground)}">
+<title>${esc(root.text)} · Waypoint</title>
+<style id="css">${CSS}</style>
+</head>
+<body>
+${SHELL}
+${LT}script type="application/json" id="deck">${deck}${LT}/script>
+${LT}script>${CODE}${LT}/script>
+</body>
+</html>
+`;
+}
+if (DECK) $('#sample').textContent = 'Restore the original';
+
+/* ───────── find: type a few letters, the chart flies to the best match ───────── */
+const findEl = $('#find'), q = $('#q');
+let hits = [], hitI = 0, findFrom = null, peeked = false;
+const fold = t => t.normalize('NFD').replace(/[\u0300-\u036F]/g, '').toLowerCase();
+function openFind() {
+  if (finding) { q.focus(); q.select(); return; }
+  toggleKeys(false); toggleLook(false); finding = true; peeked = false;
+  findFrom = { n: focus, view: roamT ? { x: tgt.x, y: tgt.y, l: tgt.l } : null };
+  findEl.hidden = false; document.body.classList.add('finding'); q.value = ''; hits = []; hitI = 0; showHit(); q.focus();
+}
+function seek() {
+  const terms = fold(q.value).split(/\s+/).filter(Boolean);
+  hits = [];
+  for (const n of nodes) {
+    n.hit = false; if (n === root || !terms.length) continue;
+    const t = n.fold ||= fold(n.text);
+    if (!terms.every(w => t.includes(w))) continue;
+    const starts = terms.every(w => t.startsWith(w) || new RegExp('[^\\p{L}\\p{N}]' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'u').test(t));
+    n.hit = true; hits.push({ n, score: (starts ? 2 : 0) + (isHead(n) ? 1.5 : 0) + 1 / (1 + t.length / 40) });
+  }
+  hits.sort((a, b) => b.score - a.score || a.n.i - b.n.i);
+  hitI = 0; showHit();
+}
+function showHit() {
+  const h = hits[hitI], term = q.value.trim();
+  $('#found').textContent = h ? `${hitI + 1} of ${hits.length}` : '';
+  $('#where').textContent = !term ? 'Type a few letters. ↓ and ↑ step through matches, Enter stays, Esc goes back.'
+    : !h ? `No stop contains “${term}”.`
+    : chain(h.n).slice(1).map(n => (n.d === 1 ? n.sec + 1 + ' ' : '') + short(n.text, 46)).join('  /  ');
+  if (h && (h.n !== focus || roamT)) { peeked = true; travel(h.n, false, true); }
+}
+function closeFind(commit) {        // true: stay at the match · 'stay': stay put, no flight · false: back to where you were
+  if (!finding) return;
+  const h = hits[hitI], from = findFrom;
+  finding = false; findEl.hidden = true; document.body.classList.remove('finding'); hits = []; nodes.forEach(n => { n.hit = false; }); q.blur();
+  if (commit === 'stay') { focus.visited = true; save(); }
+  else if (commit && h) travel(h.n);
+  else if (!peeked) return;
+  else if (from.view && nodes.includes(from.n)) { focus = from.n; setDims(performance.now()); hud(); flyTo(from.view); roamT = 1; }
+  else travel(nodes.includes(from.n) ? from.n : root);
+}
+q.addEventListener('input', seek);
+
+/* ───────── writing an outline: Tab indents, Enter continues the list ───────── */
+const typeIn = (text, a, b) => { ta.setSelectionRange(a, b); if (!document.execCommand('insertText', false, text)) { ta.setRangeText(text, a, b, 'end'); ta.dispatchEvent(new Event('input')); } ta.setSelectionRange(a + text.length, a + text.length); };
+ta.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+  const v = ta.value, a = ta.selectionStart, b = ta.selectionEnd, ls = v.lastIndexOf('\n', a - 1) + 1;
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const stop = b > a && v[b - 1] === '\n' ? b - 1 : b, nl = v.indexOf('\n', stop), le = nl < 0 ? v.length : nl;
+    const block = v.slice(ls, le), was = block.split('\n');
+    const now = was.map(l => e.shiftKey ? l.replace(/^( {1,2}|\t)/, '') : l.trim() || a === b ? '  ' + l : l), out = now.join('\n');
+    if (out === block) return;
+    const d0 = now[0].length - was[0].length;
+    typeIn(out, ls, le);
+    if (a === b) { const c = Math.max(ls, a + d0); ta.setSelectionRange(c, c); } else ta.setSelectionRange(ls, ls + out.length);
+  } else if (e.key === 'Enter' && !e.shiftKey && a === b) {
+    const line = v.slice(ls, a), m = line.match(/^(\s*)([-*+•]|\d+[.)])\s+/);
+    if (!m) return;
+    e.preventDefault();
+    if (m[0].length === line.length && (a === v.length || v[a] === '\n')) typeIn(m[1].length >= 2 ? m[1].slice(2) + m[2] + ' ' : '', ls, a);   // empty item: step out
+    else typeIn('\n' + m[1] + (/\d/.test(m[2]) ? parseInt(m[2], 10) + 1 + m[2].slice(-1) : m[2]) + ' ', a, a);
+  }
+});
+document.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b) { acts[b.dataset.act](); if (b.closest('.hud')) b.blur(); } else if (!e.composedPath().some(x => x.id === 'keys' || x.id === 'look')) { toggleKeys(false); toggleLook(false); } });   // the path, not the target: a panel may have redrawn the button that was clicked
+$('#picfile').onchange = async e => { const fs = [...e.target.files]; e.target.value = ''; await typePics(fs); };
+$('#file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) chartFile(f, null); };
+
+/* ───────── speaker notes: a second window the presenter reads from; this page drives it ───────── */
+const PV_CSS = `.pv{--i:#fbfaf5;--i2:rgba(251,250,245,.72);--r:rgba(251,250,245,.3);--a:#ffb224;--d:"Futura","Futura PT","Century Gothic","Avenir Next",system-ui,sans-serif;
+box-sizing:border-box;height:100%;display:flex;flex-direction:column;background:#071c6b;color:var(--i);font:16px/1.5 "Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;user-select:text;-webkit-user-select:text}
+.pv *{box-sizing:border-box}
+.pv button{font:500 11px/1 var(--d);letter-spacing:.14em;text-transform:uppercase;color:inherit;background:none;border:1px solid var(--r);padding:13px 18px;cursor:pointer}
+.pv button:hover{border-color:var(--i)}
+.pv button:focus-visible{outline:2px solid var(--a);outline-offset:3px}
+.pv-top{display:flex;align-items:baseline;gap:18px;padding:18px 24px 14px;border-bottom:1px solid var(--r);font-family:var(--d);font-variant-numeric:tabular-nums}
+#pv-time{font-size:34px;font-weight:500;line-height:1}
+.pv .pv-top button{border:0;border-bottom:1px solid var(--r);padding:4px 0}
+#pv-clock{margin-left:auto;color:var(--i2)}#pv-count{color:var(--i2)}
+.pv-body{flex:1;min-height:0;overflow:auto;padding:20px 24px 24px;scrollbar-color:var(--r) transparent}
+#pv-path{margin:0 0 6px;font-size:13px;color:var(--i2)}
+#pv-now{margin:0 0 18px;font:500 26px/1.2 var(--d);text-wrap:balance}
+#pv-notes p{margin:0 0 .7em;font-size:19px;line-height:1.5;max-width:60ch}
+#pv-notes .none{font-size:16px;color:var(--i2)}
+#pv-pics{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 0}
+#pv-pics:empty{display:none}
+#pv-pics img{display:block;height:132px;max-width:100%;background:#fbfaf5;border:1px solid var(--r)}
+#pv-kids{margin:20px 0 0;padding:16px 0 0;border-top:1px solid var(--r);list-style:none;color:var(--i2);font-size:15px}
+#pv-kids:empty{display:none}
+#pv-kids li{padding:3px 0 3px 20px;position:relative}
+#pv-kids li::before{content:"";position:absolute;left:2px;top:.78em;width:6px;height:6px;border:1px solid currentColor;border-radius:50%}
+.pv-foot{display:flex;align-items:center;gap:12px;padding:14px 24px 18px;border-top:1px solid var(--r)}
+.pv-foot p{flex:1;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--i2)}
+.pv-foot p b{font-weight:400;color:var(--i)}`;
+const PV_HTML = `<div class="pv"><div class="pv-top"><span id="pv-time" title="Time since you left the first stop">0:00</span><button id="pv-reset">Reset</button><span id="pv-clock"></span><span id="pv-count"></span></div>
+<div class="pv-body"><p id="pv-path"></p><h1 id="pv-now"></h1><div id="pv-notes"></div><div id="pv-pics"></div><ul id="pv-kids"></ul></div>
+<div class="pv-foot"><p>Next: <b id="pv-next"></b></p><button id="pv-back">Back</button><button id="pv-fwd">Next</button></div></div>`;
+const notesDoc = () => pv && !pv.closed ? pv.document : pvIn ? document : null;
+function skinNotes() {              // the notes take the colours and lettering of the chart
+  const d = notesDoc(), st = d?.getElementById('pv-css'); if (!st || !C) return;
+  st.textContent = PV_CSS + `.pv{--i:${hexOf(C.ink)};--i2:${ink(C.soft[0])};--r:${ink(C.soft[2])};--a:${hexOf(C.key)};--d:${TH.ui || DISPLAY};background:${hexOf(C.deep)};font-family:${TEXT};color-scheme:${DARK ? 'dark' : 'light'}}` + (TH.notesCss || '');
+  if (d !== document) d.documentElement.style.background = d.body.style.background = hexOf(C.deep);
+}
+const stopName = n => (n.d === 1 ? n.sec + 1 + '  ' : '') + n.text;
+function renderNotes() {
+  const d = notesDoc(); if (!d || !focus || !d.getElementById('pv-now')) return;
+  const g = id => d.getElementById(id), el = (tag, text, cls) => { const e = d.createElement(tag); e.textContent = text; if (cls) e.className = cls; return e; };
+  g('pv-count').textContent = $('#count').textContent;
+  g('pv-path').textContent = chain(focus).slice(0, -1).map(n => short(stopName(n), 40)).join('  /  ');
+  g('pv-now').textContent = stopName(focus);
+  const lines = (focus.notes || []).map(l => tidy(l).text).filter(Boolean);
+  g('pv-notes').replaceChildren(...(lines.length ? lines.map(l => el('p', l)) : [el('p', 'No notes for this stop.', 'none')]));
+  g('pv-pics').replaceChildren(...focus.pics.filter(p => pic(p.src).ok).map(p => { const i = d.createElement('img'); i.alt = p.alt; i.src = pic(p.src).img.src; return i; }));
+  g('pv-kids').replaceChildren(...focus.kids.map(c => el('li', c.text)));
+  const nx = nodes[focus.i + 1]; g('pv-next').textContent = nx ? stopName(nx) : 'the end of the outline';
+  if (d !== document) d.title = 'Notes · ' + root.text;
+  tickNotes();
+}
+function tickNotes() {
+  if (pv && pv.closed) pv = null;
+  const d = notesDoc(), t = d?.getElementById('pv-time'); if (!t) return;
+  const sec = clock0 == null ? 0 : Math.floor((Date.now() - clock0) / 1000), h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60;
+  t.textContent = (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec % 60).padStart(2, '0');
+  d.getElementById('pv-clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(tickNotes, 500);
+function wireNotes(d) {
+  const on = (id, fn) => { d.getElementById(id).onclick = e => { fn(); e.currentTarget.blur(); }; };
+  on('pv-back', prev); on('pv-fwd', next); on('pv-reset', () => { clock0 = null; tickNotes(); });
+}
+function toggleNotes() {
+  if (pv && !pv.closed) { pv.close(); pv = null; return; }
+  if (pvIn) { pvIn.remove(); pvIn = null; return; }
+  armed = true;                     // the timer starts when you next move to a stop
+  try { pv = window.open('', 'waypoint-notes', 'popup,width=560,height=760'); } catch { pv = null; }
+  if (pv) {
+    const d = pv.document; d.open();
+    d.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Notes</title><style>html,body{margin:0;height:100%;background:#071c6b}</style><style id="pv-css">${PV_CSS}</style></head><body>${PV_HTML}</body></html>`);
+    d.close();
+    pv.addEventListener('keydown', e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || editing || finding) return;
+      if (e.key === 'n' || e.key === 'N') { toggleNotes(); return; }
+      if (e.key === 'Enter' ? (next(), true) : navKey(e.key)) e.preventDefault();
+    });
+    wireNotes(d);
+  } else {                          // pop-ups blocked: the notes sit beside the chart instead
+    pvIn = document.createElement('aside'); pvIn.id = 'pvin'; pvIn.setAttribute('aria-label', 'Speaker notes');
+    pvIn.innerHTML = `<style id="pv-css">${PV_CSS}</style>${PV_HTML}`; document.body.append(pvIn); wireNotes(document);
+    toast('Pop-ups are blocked here, so the notes sit beside the chart. Allow pop-ups to get them in their own window.');
+  }
+  skinNotes(); renderNotes();
+}
+addEventListener('pagehide', () => { if (pv && !pv.closed) pv.close(); });
+
+/* ───────── input ───────── */
+function pick(px, py) {
+  let hit = null;
+  for (const n of nodes) {
+    const fpx = n.ws * camZ; if (fpx < 6.5 || fpx > vh * 0.6) continue;
+    const sx = (n.wx - cam.x) * camZ + vw / 2, sy = (n.wy - cam.y) * camZ + vh / 2;
+    if (px >= sx + n.box.x0 * fpx - 4 && px <= sx + n.box.x1 * fpx + 4 && py >= sy + n.box.y0 * fpx - 3 && py <= sy + n.box.y1 * fpx + 3 && (!hit || n.d >= hit.d)) hit = n;
+  }
+  return hit;
+}
+function pickPic(px, py) {          // → { n, i } for a loaded picture under the point
+  for (const n of nodes) {
+    if (!n.ims) continue;
+    const fpx = n.ws * camZ, sx = (n.wx - cam.x) * camZ + vw / 2, sy = (n.wy - cam.y) * camZ + vh / 2;
+    for (let i = 0; i < n.ims.length; i++) {
+      const m = n.ims[i], x = sx + m.x * fpx, y = sy + m.y * fpx;
+      if (m.p.ok && m.h * fpx >= 24 && px >= x && px <= x + m.w * fpx && py >= y && py <= y + m.h * fpx) return { n, i };
+    }
+  }
+  return null;
+}
+const ptrs = new Map(); let pinch = null;
+stage.addEventListener('wheel', e => {
+  e.preventDefault(); wander();
+  const unit = e.deltaMode === 1 ? 16 : 1;
+  if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.3) { tgt.x += e.deltaX * unit / Math.exp(tgt.l); bound(tgt); return; }
+  zoomAbout(e.clientX, e.clientY, clamp(-e.deltaY * unit * (e.ctrlKey ? 0.012 : 0.0026), -0.55, 0.55));
+}, { passive: false });
+stage.addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  closeFind('stay');
+  stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) { fling = null; drag = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, lt: performance.now(), vx: 0, vy: 0, moved: false }; }
+  else { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); wander(); drag = null; }
+});
+stage.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) {
+    hover = pick(e.clientX, e.clientY); stage.classList.toggle('point', !!hover);
+    const hp = pickPic(e.clientX, e.clientY), mine = !!hp && hp.n === focus, shown = mine && !!closeup && closeup.i === hp.i && !roamT;
+    stage.classList.toggle('zin', mine && !shown); stage.classList.toggle('zout', shown);
+    return;
+  }
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2 && pinch) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    zoomAbout((a.x + b.x) / 2, (a.y + b.y) / 2, Math.log(d / pinch)); pinch = d; return;
+  }
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4) { drag.moved = true; wander(); hover = null; stage.classList.add('grabbing'); stage.classList.remove('zin', 'zout'); tgt.l = Math.max(tgt.l, lMin); }
+  if (drag.moved) {
+    const now = performance.now(), dx = e.clientX - drag.lx, dy = e.clientY - drag.ly, dtm = Math.max(1, now - drag.lt) / 1000, Z = Math.exp(cam.l);
+    cam.x -= dx / Z; cam.y -= dy / Z; bound(cam); tgt.x = cam.x; tgt.y = cam.y; cam.vx = cam.vy = 0;
+    drag.vx = lerp(drag.vx, dx / dtm, 0.4); drag.vy = lerp(drag.vy, dy / dtm, 0.4); drag.lt = now;
+  }
+  drag.lx = e.clientX; drag.ly = e.clientY;
+});
+const release = e => {
+  if (!ptrs.delete(e.pointerId)) return;
+  pinch = null; stage.classList.remove('grabbing');
+  if (!drag) return;
+  if (!drag.moved) {
+    if (e.type === 'pointerup') {   // a click on the picture of the stop you are on opens it; anywhere else it is a destination
+      const hp = pickPic(e.clientX, e.clientY), n = pick(e.clientX, e.clientY);
+      if (hp && hp.n === focus) { if (closeup && closeup.i === hp.i && !roamT) travel(focus); else lookAt(focus, hp.i); stage.classList.remove('zin', 'zout'); }
+      else if (n) travel(n);
+    }
+  }
+  else if (performance.now() - drag.lt < 80 && Math.hypot(drag.vx, drag.vy) > 120 && !reduced.matches) { const Z = Math.exp(cam.l), cap = Math.min(1, 3200 / Math.hypot(drag.vx, drag.vy)); fling = { vx: -drag.vx * cap / Z, vy: -drag.vy * cap / Z }; }
+  drag = null;
+};
+stage.addEventListener('pointerup', release); stage.addEventListener('pointercancel', release);
+stage.addEventListener('pointerleave', () => { hover = null; stage.classList.remove('point', 'zin', 'zout'); });
+stage.addEventListener('dblclick', e => { if (!pick(e.clientX, e.clientY)) { wander(); zoomAbout(e.clientX, e.clientY, 0.9); } });
+
+let miniDown = false;
+const miniGo = e => { const r = mini.getBoundingClientRect(), m = miniMap; wander(); tgt.x = (e.clientX - r.left - m.ox) / m.s; tgt.y = (e.clientY - r.top - m.oy) / m.s; bound(tgt); };
+mini.addEventListener('pointerdown', e => { miniDown = true; mini.setPointerCapture(e.pointerId); miniGo(e); });
+mini.addEventListener('pointermove', e => { if (miniDown) miniGo(e); });
+mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('pointercancel', () => { miniDown = false; });
+
+function navKey(k) {                // the keys that move between stops; shared with the notes window
+  if (k === 'ArrowRight' || k === ' ' || k === 'PageDown') next();
+  else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') prev();
+  else if (k === 'ArrowUp') up();
+  else if (k === 'ArrowDown') travel(focus.kids[0] || nodes[focus.i + 1]);
+  else if (k === '0' || k === 'Home') travel(root);
+  else if (k === 'End') travel(nodes.at(-1));
+  else if (k.length === 1 && k >= '1' && k <= '9') travel(root.kids[+k - 1]);
+  else return false;
+  return true;
+}
+addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'f' || e.key === 'F') && !editing) { openFind(); e.preventDefault(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) {
+    if (editing && (e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 's' || e.key === 'S')) { acts.save(); e.preventDefault(); }
+    else if (editing && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { closeSheet(); e.preventDefault(); }
+    return;
+  }
+  if (editing) { if (e.key === 'Escape') { closeSheet(); e.preventDefault(); return; } if (sheet.contains(document.activeElement)) return; }
+  if (e.target instanceof HTMLInputElement && e.target.closest('#look')) { if (e.key === 'Escape' || e.key === 'Enter') { e.target.blur(); e.preventDefault(); } return; }   // naming a palette, or working a colour well
+  if (finding) {
+    const step = d => { if (hits.length) { hitI = (hitI + d + hits.length) % hits.length; showHit(); } };
+    if (e.key === 'Escape') closeFind(false); else if (e.key === 'Enter') closeFind(true);
+    else if (e.key === 'ArrowDown') step(1); else if (e.key === 'ArrowUp') step(-1);
+    else { if (document.activeElement !== q) q.focus(); return; }
+    e.preventDefault(); return;
+  }
+  const k = e.key;
+  if (k === 'Enter' && e.target === document.body) next();
+  else if ((k === 'ArrowUp' || k === 'Escape') && !$('#keys').hidden) toggleKeys(false);
+  else if (k === 'Escape' && !lookEl.hidden) toggleLook(false);
+  else if (k === 'Escape') up();
+  else if (navKey(k)) {}
+  else if (k === 'n' || k === 'N') toggleNotes();
+  else if (k === 'f' || k === 'F') acts.full();
+  else if (k === 'z' || k === 'Z') zoomPic();
+  else if (k === 'e' || k === 'E') openSheet();
+  else if (k === 't' || k === 'T') acts.theme();
+  else if (k === 'p' || k === 'P') acts.palette();
+  else if (k === 'd' || k === 'D') acts.mode();
+  else if (k === 'l' || k === 'L') acts.lean();
+  else if (k === '/') openFind();
+  else if (k === '?' || k === 'k' || k === 'K') toggleKeys();
+  else if (k === '=' || k === '+') { wander(); zoomAbout(vw / 2, vh / 2, 0.5); }
+  else if (k === '-') { wander(); zoomAbout(vw / 2, vh / 2, -0.5); }
+  else return;
+  e.preventDefault();
+});
+/* ───────── pictures in: a dropped or pasted image is stored in the page and named in the outline ───────── */
+const isPic = f => /^image\//.test(f.type);
+const stem = name => name.replace(/\.[^.]+$/, '').replace(/[\[\]()|]/g, ' ').replace(/\s+/g, ' ').trim();
+async function ingest(f) {          // → the source to write in the outline; large photos are scaled to screen size first
+  const asURL = b => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(b); });
+  let url;
+  if (f.type === 'image/svg+xml' || f.size <= 3e5) url = await asURL(f);
+  else {
+    const bmp = await createImageBitmap(f), k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    url = c.toDataURL('image/webp', 0.86);
+    if (!url.startsWith('data:image/webp')) url = c.toDataURL(f.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.88);
+    if (url.length > f.size * 1.4 && f.size < 1.5e6) url = await asURL(f);   // re-encoding made it larger: keep the original
+  }
+  if (!/^data:image\//.test(url) || url.length > 4e6) throw new Error('too large');
+  const id = hash(url) + url.length.toString(36); assets[id] = url;
+  if (pix.get('img:' + id)?.bad) pix.delete('img:' + id);
+  await pic('img:' + id).ready;
+  if (!pic('img:' + id).ok) throw new Error('unreadable');
+  return 'img:' + id;
+}
+async function gather(files) {      // → [{ src, name }]; says which files it could not use
+  const out = [];
+  for (const f of files) {
+    try { out.push({ src: await ingest(f), name: /^image$/i.test(stem(f.name)) ? '' : stem(f.name) }); }
+    catch { toast(`“${f.name}” could not be used as a picture. Try a PNG, JPEG, WebP or SVG under a few megabytes.`); }
+  }
+  return out;
+}
+function pinTo(n, got) {            // write picture lines under the stop's own line, then lay the chart out again around it
+  if (!got.length) return;
+  if (!nodes.includes(n)) n = focus;
+  const lines = source.split('\n'), row = n.line, own = row == null ? '' : lines[row];
+  const lead = own.match(/^\s*/)[0] + (/^\s*(?:[-*+•]|\d+[.)])\s/.test(own) ? '  ' : '');
+  lines.splice(row == null ? root.top0 : row + 1, 0, ...got.map(g => `${lead}![${g.name}](${g.src})`));
+  const before = { src: source, title: docTitle, at: n.i }, seen = nodes.map(m => m.visited), dims = nodes.map(m => m.dim), ox = n.wx, oy = n.wy;
+  build(lines.join('\n'), docTitle);
+  const m = nodes[before.at] || root, dx = m.wx - ox, dy = m.wy - oy, was = unfollow();
+  nodes.forEach((k, i) => { k.visited = !!seen[i]; if (dims[i] != null) k.dim = dims[i]; });
+  cam.x += dx; cam.y += dy; tgt.x += dx; tgt.y += dy; flight = null;
+  travel(m);
+  toast(`Pinned ${got.length > 1 ? got.length + ' pictures' : 'the picture'} to “${short(m.text, 32)}”.` + (was ? ` No longer following ${was}.` : ''), before);
+}
+async function typePics(files) {    // in the editor: each picture gets its own line under the line the caret is on
+  for (const g of await gather(files.filter(isPic))) {
+    const v = ta.value, a = ta.selectionStart, ls = v.lastIndexOf('\n', a - 1) + 1, nl = v.indexOf('\n', a), le = nl < 0 ? v.length : nl, line = v.slice(ls, le);
+    const md = `![${g.name}](${g.src})`;
+    ta.focus();
+    if (!line.trim()) typeIn(md, le, le);
+    else typeIn('\n' + line.match(/^\s*/)[0] + (/^\s*(?:[-*+•]|\d+[.)])\s/.test(line) ? '  ' : '') + md, le, le);
+  }
+}
+addEventListener('paste', async e => {
+  const cd = e.clipboardData, shots = [...(cd?.files || [])].filter(isPic), t = cd?.getData('text/plain') || '';
+  if (editing) { if (shots.length && e.target === ta && !t.trim()) { e.preventDefault(); typePics(shots); } return; }
+  if (finding || e.target instanceof HTMLInputElement) return;
+  if (t.trim().split('\n').length >= 2) { e.preventDefault(); adopt(t, null, 'Charted the outline from your clipboard.'); return; }
+  if (shots.length) { e.preventDefault(); const at = focus; pinTo(at, await gather(shots)); return; }
+  if (PIC_URL.test(t.trim())) { e.preventDefault(); pinTo(focus, [{ src: t.trim(), name: '' }]); return; }
+  toast('That clipboard is not an outline or a picture. Copy a few headings or bullets, or an image, and paste again.');
+});
+function fileRef(s) {               // a drag that names a file without carrying it: Obsidian's file list, some editors
+  let name = '', from = 'That drag';
+  try {
+    const one = s.split(/\s/)[0];
+    if (/^obsidian:\/\//i.test(one)) {
+      const q = new URL(one).searchParams; name = (q.get('file') || q.get('path') || '').split('/').pop(); from = 'Obsidian';
+      if (name && !/\.(?:md|markdown|txt|canvas|base|pdf|png|jpe?g|gif|webp|svg|avif|bmp|csv|json|html?)$/i.test(name)) name += '.md';
+    }
+    else if (/^file:\/\//i.test(one)) name = decodeURIComponent(new URL(s.split('\n')[0].trim()).pathname.split('/').pop());
+    else if (!s.includes('\n') && /^(?:\/|~\/|[a-z]:\\).*\.(?:md|markdown|txt)$/i.test(s)) name = s.split(/[\\/]/).pop();
+  } catch {}
+  return name ? { name, from } : null;
+}
+/* ───────── an Obsidian vault folder, opened once: drags from Obsidian's file list then resolve to the real files ───────── */
+const vaults = {};                  // vault name → folder handle, kept in the browser's own database so it survives a reload
+const kv = (mode, fn) => new Promise((ok, no) => {
+  const o = indexedDB.open('waypoint', 1); o.onupgradeneeded = () => o.result.createObjectStore('kv'); o.onerror = () => no(o.error);
+  o.onsuccess = () => { const tx = o.result.transaction('kv', mode), r = fn(tx.objectStore('kv')); tx.oncomplete = () => { o.result.close(); ok(r.result); }; tx.onerror = tx.onabort = () => no(tx.error); };
+});
+try { kv('readonly', st => st.get('vaults')).then(v => { if (v && typeof v === 'object') Object.assign(vaults, v); }).catch(() => {}); } catch {}
+const keepVaults = () => { try { kv('readwrite', st => st.put(vaults, 'vaults')).catch(() => {}); } catch {} };
+function obsRef(s) {                // obsidian://open?vault=…&file=… → { vault, rel, name }
+  try {
+    const one = s.split(/\s/)[0]; if (!/^obsidian:\/\//i.test(one)) return null;
+    const q = new URL(one).searchParams, vault = q.get('vault'), rel = (q.get('file') || '').replace(/^\/+/, '');
+    if (!vault || !rel) return null;
+    const last = rel.split('/').pop();
+    return { vault, rel, name: /\.[a-z0-9]{2,5}$/i.test(last) ? last : last + '.md' };
+  } catch { return null; }
+}
+async function inVault(dir, rel) {  // the file a vault-relative path names, or null. Obsidian leaves ".md" off its links
+  const parts = rel.split('/').filter(Boolean), last = parts.pop();
+  try {
+    let d = dir; for (const part of parts) d = await d.getDirectoryHandle(part);
+    for (const n of /\.md$/i.test(last) ? [last] : [last + '.md', last]) { try { return await d.getFileHandle(n); } catch {} }
+  } catch {}
+  return null;
+}
+async function fromObsidian(ob, at) {
+  const dir = vaults[ob.vault], isShot = PIC_EXT.test(ob.name), what = isShot ? 'picture' : 'file';
+  const pickOne = isShot ? { label: 'Choose the picture', run: acts.pic } : { label: 'Choose the file', run: acts.open };
+  const pickDir = { label: 'Open the vault folder', run: async () => {
+    let d; try { d = await window.showDirectoryPicker({ id: 'waypoint-vault', mode: 'read' }); } catch { return; }
+    vaults[ob.vault] = d; keepVaults(); fromObsidian(ob, at);
+  } };
+  if (!dir) { toast(`Obsidian passed a link to “${short(ob.name, 36)}”, not the ${what} itself. Open the vault folder “${short(ob.vault, 28)}” once and drags from Obsidian work directly, or choose just this ${what}.`, null, pickDir, pickOne); return; }
+  let state = 'prompt'; try { state = await dir.queryPermission({ mode: 'read' }); } catch {}
+  if (state !== 'granted') {
+    toast(`The browser needs your permission again to read the vault folder “${short(dir.name || ob.vault, 28)}”.`, null, { label: 'Allow', run: async () => {
+      let st; try { st = await dir.requestPermission({ mode: 'read' }); } catch {}
+      if (st === 'granted') fromObsidian(ob, at);
+    } }, pickOne); return;
+  }
+  const fh = await inVault(dir, ob.rel);
+  if (!fh) { toast(`“${short(ob.name, 36)}” is not in the folder “${short(dir.name || ob.vault, 28)}”. Open the folder Obsidian calls “${short(ob.vault, 28)}”, or choose just this ${what}.`, null, pickDir, pickOne); return; }
+  const f = await fh.getFile();
+  if (isPic(f) || PIC_EXT.test(f.name)) { if (editing) typePics([f]); else { closeFind('stay'); pinTo(at && nodes.includes(at) ? at : focus, await gather([f])); } return; }
+  chartFile(f, fh);
+}
+let dragDepth = 0, dragPic = false, dropAt = null, dragOwn = false;
+addEventListener('dragstart', () => { dragOwn = true; }); addEventListener('dragend', () => { dragOwn = false; });
+const carries = dt => { const t = [...(dt?.types || [])]; return t.includes('Files') ? 'files' : t.includes('text/uri-list') || t.includes('text/plain') ? 'text' : null; };
+const typing = e => dragOwn || (editing && e.target === ta && carries(e.dataTransfer) !== 'files');   // text dragged within or into the editor is the browser's to handle
+const endDrag = () => { dragDepth = 0; dragPic = false; dropAt = null; hover = null; const d = $('#drop'); d.hidden = true; d.classList.remove('pin'); };
+addEventListener('dragenter', e => {
+  const kind = typing(e) ? null : carries(e.dataTransfer); if (!kind) return;
+  if (!dragDepth++) {
+    const its = [...e.dataTransfer.items].filter(i => i.kind === 'file'), allPics = its.length > 0 && its.every(i => /^image\//.test(i.type)), d = $('#drop');
+    dragPic = allPics && !editing; dropAt = null;
+    d.classList.toggle('pin', dragPic); d.textContent = allPics ? 'Drop to add this picture to the outline' : kind === 'files' ? 'Drop to chart this outline' : 'Drop it on the chart'; d.hidden = false;
+  }
+});
+addEventListener('dragleave', () => { if (dragDepth && --dragDepth <= 0) endDrag(); });
+addEventListener('dragover', e => {
+  if (typing(e) || !carries(e.dataTransfer)) return;
+  e.preventDefault(); if (!dragPic) return;
+  const n = pick(e.clientX, e.clientY), to = n || focus; hover = n;   // the stop under the cursor lights up; empty space means the stop you are on
+  if (to !== dropAt) { dropAt = to; $('#drop').textContent = 'Pin to “' + short(to.text, 36) + '”'; }
+});
+addEventListener('drop', async e => {
+  if (typing(e)) { endDrag(); return; }
+  e.preventDefault();
+  const at = !editing ? pick(e.clientX, e.clientY) : null, dt = e.dataTransfer, files = [...(dt?.files || [])], shots = files.filter(isPic).slice(0, 6);
+  const uris = files.length ? [] : (dt?.getData('text/uri-list') || '').split('\n').map(l => l.trim()).filter(l => l && l[0] !== '#');
+  const text = files.length ? '' : (dt?.getData('text/plain') || '').trim(), link = uris.find(l => PIC_URL.test(l));
+  let hp = null; try { hp = [...(dt?.items || [])].find(i => i.kind === 'file')?.getAsFileSystemHandle?.() || null; } catch {}
+  endDrag();
+  if (shots.length) { if (editing) { typePics(shots); return; } closeFind('stay'); const to = at || focus; pinTo(to, await gather(shots)); return; }
+  if (link && !editing) { closeFind('stay'); pinTo(at || focus, [{ src: link, name: '' }]); return; }
+  const f = files[0];
+  if (f) { chartFile(f, hp ? await Promise.resolve(hp).catch(() => null) : null); return; }
+  const ob = window.showDirectoryPicker ? obsRef(uris[0] || text) : null;
+  if (ob) { fromObsidian(ob, at); return; }
+  const ref = fileRef(uris[0] || text);
+  if (ref && PIC_EXT.test(ref.name)) { toast(`${ref.from} passed a link to “${short(ref.name, 40)}”, not the picture itself. Choose the picture here instead.`, null, { label: 'Choose the picture', run: acts.pic }); return; }
+  if (ref) { toast(`${ref.from} passed a link to “${short(ref.name, 40)}”, not the file itself, so the browser cannot read it. ` + (window.showOpenFilePicker ? 'Choose the file once and the chart follows it.' : 'Choose the file to chart it.'), null, { label: 'Choose the file', run: acts.open }); return; }
+  if (text.split('\n').length >= 2) { closeFind(false); closeSheet(); adopt(text, null, 'Charted the text you dropped.'); return; }
+  toast('Nothing in that drop could be charted. Drop a Markdown or text file, a picture, or a few selected lines of an outline.');
+});
+let idleTimer = 0;
+const wake = () => { document.body.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (!editing && $('#keys').hidden && lookEl.hidden && !finding) document.body.classList.add('idle'); }, 3200); };
+addEventListener('pointermove', wake); addEventListener('pointerdown', wake); addEventListener('keydown', wake);
+addEventListener('resize', () => {
+  resize(); if (!root) return;
+  const reshaped = Math.abs(Math.log(clamp(vw / vh, 0.5, 2.4) / laidFor)) > 0.22;   // e.g. a phone turned on its side
+  if (reshaped) { arrange(); roamT = 0; } else refit();
+  if (!roamT) flyTo(home(), true);
+});
+
+/* ───────── start ───────── */
+initLook(); applyLook(true);
+resize();
+let saved = null; try { saved = JSON.parse(localStorage.getItem(STORE)); } catch {}
+const mine = typeof saved?.src === 'string';
+try { load(mine ? saved.src : BASE, mine ? saved.title : BASE_TITLE, saved?.at || 0); } catch { load(BASE, BASE_TITLE, 0); }
+wake();
+requestAnimationFrame(t => { lastT = t; frame(t); });
+})();
+</script>
+</body>
+</html>
