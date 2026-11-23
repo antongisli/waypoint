@@ -4,7 +4,9 @@ Waypoint turns a Markdown outline into a chart you can fly around and present fr
 
 It is one HTML file with no dependencies and no build step. The page loads nothing from the network, and your outline stays in your browser.
 
-![The grid theme, showing a whole outline](screenshots/grid.png)
+![Stepping through an outline: the camera flies between stops, then the look changes to light mode, another palette and the chart theme](screenshots/demo.gif)
+
+The animation is reduced in size and colour. [Watch it at full quality](screenshots/demo.mp4).
 
 ## Use it
 
@@ -50,7 +52,7 @@ Any theme can wear any palette. The built-in palettes are Mono, Blueprint and Ne
 
 ![The grid theme at a single section](screenshots/grid-stop.png)
 
-![The chart theme, showing a whole outline](screenshots/chart.png)
+![The chart theme at a single section](screenshots/chart.png)
 
 The Look button opens a panel with all three. Changing one of the four colours there makes a palette of your own, which you can rename and which is remembered in the browser. "Save in outline" writes the current look into the outline's front matter, so it travels with the file.
 
